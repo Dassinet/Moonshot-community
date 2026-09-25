@@ -150,18 +150,6 @@ CREATE TABLE IF NOT EXISTS email_tokens (
 );
 CREATE INDEX IF NOT EXISTS email_tokens_user ON email_tokens(user_id, purpose, created_at);
 
--- One-time codes for the private site gate (see src/gate.js). Codes are
--- stored as HMACs, never in plain text.
-CREATE TABLE IF NOT EXISTS gate_codes (
-  id         INTEGER PRIMARY KEY,
-  email      TEXT NOT NULL COLLATE NOCASE,
-  code_hash  TEXT NOT NULL,
-  attempts   INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS gate_codes_email ON gate_codes(email, created_at);
-
 CREATE TABLE IF NOT EXISTS audit_log (
   id         INTEGER PRIMARY KEY,
   actor_id   INTEGER,

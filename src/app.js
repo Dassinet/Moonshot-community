@@ -11,6 +11,7 @@ import { RateLimiter, limit } from './security/rateLimit.js';
 import { layout, FLASH } from './views/layout.js';
 import { html } from './views/html.js';
 import gateRoutes, { gateMiddleware } from './gate.js';
+import exploreRoutes from './routes/explore.js';
 import authRoutes from './routes/auth.js';
 import homeRoutes from './routes/home.js';
 import profileRoutes from './routes/profile.js';
@@ -24,9 +25,12 @@ import adminRoutes from './routes/admin.js';
 
 export function loadConfig(env = process.env) {
   const production = env.NODE_ENV === 'production';
+  const demo = env.DEMO_MODE === 'true';
   let secret = env.SESSION_SECRET;
   if (!secret || secret.length < 32) {
-    if (production) throw new Error('SESSION_SECRET must be set to at least 32 random characters in production.');
+    // A real community must have a stable secret; a demo can run without one
+    // (visitors may just be asked to pick a demo member again after a restart).
+    if (production && !demo) throw new Error('SESSION_SECRET must be set to at least 32 random characters in production.');
     secret = randomBytes(32).toString('hex');
   }
   return {
@@ -36,26 +40,22 @@ export function loadConfig(env = process.env) {
     secure: production || env.COOKIE_SECURE === 'true',
     dbPath: env.DATABASE_PATH ?? (production ? './data/community.db' : './data/dev.db'),
     trustProxy: env.TRUST_PROXY ?? (production ? '1' : 'false'),
-    // Demo deployments show a banner and are auto-seeded with sample data.
-    demo: env.DEMO_MODE === 'true',
-    appUrl: appUrl(env, production),
+    // Demo deployments show a banner, are auto-seeded with sample data, and let
+    // visitors explore as a sample member instead of signing up or logging in.
+    demo,
+    appUrl: appUrl(env),
     mail: { resendApiKey: env.RESEND_API_KEY, from: env.MAIL_FROM },
-    // Private gate: every page needs an emailed access code (or a signed-in
-    // member) before anything is shown. On unless SITE_GATE=off.
-    gate: env.SITE_GATE !== 'off',
-    // Optional invite list: comma-separated emails and/or @domains allowed to
-    // receive a code. Empty means any email address can request one.
-    gateAllowed: (env.GATE_ALLOWED ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean),
+    // Optional shared password for the whole site. Empty = public.
+    sitePassword: env.SITE_PASSWORD ?? '',
   };
 }
 
 // The public base URL used in emailed links. It comes only from configuration —
 // never from the request's Host header, which an attacker controls (that would
 // let them send victims password-reset links pointing at their own server).
-function appUrl(env, production) {
+function appUrl(env) {
   const raw = env.APP_URL || (env.VERCEL_PROJECT_PRODUCTION_URL && `https://${env.VERCEL_PROJECT_PRODUCTION_URL}`);
   if (raw) return raw.replace(/\/+$/, '');
-  if (production) throw new Error('APP_URL must be set in production (e.g. https://community.example.com).');
   return `http://localhost:${env.PORT || 3000}`;
 }
 
@@ -64,6 +64,9 @@ export function createApp(config = loadConfig(), db = openDb(config.dbPath)) {
   app.locals.db = db;
   app.locals.config = config;
   app.locals.mailer = config.mailer ?? createMailer(config);
+  // Email is optional. Without it, new accounts are active immediately and
+  // password reset is handled by moderators.
+  app.locals.emailEnabled = config.emailEnabled ?? !!(config.mailer || config.mail?.resendApiKey);
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy === 'false' ? false : Number(config.trustProxy) || config.trustProxy);
 
@@ -129,6 +132,7 @@ export function createApp(config = loadConfig(), db = openDb(config.dbPath)) {
   app.use(csrfMiddleware(config));
   app.use(gateMiddleware(config));
   app.use(gateRoutes);
+  app.use(exploreRoutes);
 
   const unread = db.prepare(
     `SELECT COUNT(*) AS n FROM messages m

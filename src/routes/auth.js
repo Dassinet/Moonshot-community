@@ -16,6 +16,13 @@ import { codeOfConduct } from '../views/content.js';
 
 const router = Router();
 
+// The demo has no sign-up or log-in: visitors explore as a sample member.
+const DEMO_REDIRECTS = new Set(['/signup', '/login', '/login/2fa', '/forgot', '/reset', '/verify', '/verify/resend', '/signup/check-email']);
+router.use((req, res, next) => {
+  if (req.app.locals.config.demo && DEMO_REDIRECTS.has(req.path)) return res.redirect(303, '/explore');
+  next();
+});
+
 const LOCK_AFTER = 5;
 const LOCK_MS = 15 * 60 * 1000;
 
@@ -58,7 +65,7 @@ function signupPage(req, { values = {}, errors = [] } = {}) {
 
 router.get('/signup', (req, res) => {
   if (req.user) return res.redirect(303, '/');
-  res.page(signupPage(req, { values: { email: req.gateEmail ?? '' } }));
+  res.page(signupPage(req));
 });
 
 router.post('/signup', limit(signupLimiter, (req) => `signup:${req.ip}`), async (req, res) => {
@@ -88,7 +95,14 @@ router.post('/signup', limit(signupLimiter, (req) => `signup:${req.ip}`), async 
   // who is a member. The owner of an existing account gets a heads-up email.
   const hash = await hashPassword(password);
   const existing = db.prepare('SELECT id, display_name FROM users WHERE email = ?').get(values.email);
-  const { mailer } = req.app.locals;
+  const { mailer, emailEnabled } = req.app.locals;
+  if (existing && !emailEnabled) {
+    // Without email we can't quietly notify the owner, so say it plainly.
+    return res.status(400).page(signupPage(req, {
+      values: { ...values, email: req.body.email },
+      errors: ['An account with this email already exists. Sign in instead.'],
+    }));
+  }
   try {
     if (existing) {
       await mailer.send({
@@ -108,9 +122,8 @@ router.post('/signup', limit(signupLimiter, (req) => `signup:${req.ip}`), async 
         "INSERT OR IGNORE INTO hub_members (hub_id, user_id, joined_at) SELECT id, ?, ? FROM hubs WHERE slug = 'global-online'",
       ).run(userId, now);
       audit(db, userId, 'user.signup', `user:${userId}`);
-      // The visitor already proved they own this address with a gate code, so
-      // skip the activation email and sign them straight in.
-      if (req.gateEmail && req.gateEmail === values.email) {
+      // Without an email service there's no activation step: sign them straight in.
+      if (!emailEnabled) {
         db.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?').run(now, userId);
         req.rotateCsrf();
         startSession(db, config, res, userId);
@@ -228,6 +241,17 @@ router.post('/verify/resend', limit(emailLimiter, (req) => `email:${req.ip}`), a
 
 // --- Password reset ---------------------------------------------------------
 
+// Without email, password resets go through a moderator.
+router.use(['/forgot', '/reset'], (req, res, next) => {
+  if (req.app.locals.emailEnabled) return next();
+  res.page({
+    title: 'Reset your password',
+    body: html`<section class="narrow card center"><h1>Forgot your password?</h1>
+      <p class="muted">Password reset by email isn't switched on for this community. Please contact a moderator to reset it.</p>
+      <p><a class="btn ghost" href="/login">Back to sign in</a></p></section>`,
+  });
+});
+
 router.get('/forgot', (req, res) =>
   res.page(emailFormPage(req, { title: 'Reset your password', intro: "Enter your account email and we'll send you a link to choose a new password.", action: '/forgot', button: 'Send reset link' })),
 );
@@ -304,7 +328,7 @@ function loginPage(req, { email = '', error } = {}) {
         <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
         <button class="btn">Sign in</button>
       </form>
-      <p class="muted"><a href="/forgot">Forgot your password?</a> · New here? <a href="/signup">Create an account</a></p>
+      <p class="muted">${req.app.locals.emailEnabled ? html`<a href="/forgot">Forgot your password?</a> · ` : ''}New here? <a href="/signup">Create an account</a></p>
     </section>`,
   };
 }
@@ -349,6 +373,11 @@ router.post('/login', limit(loginLimiter, (req) => `login:${req.ip}`), async (re
   }
   db.prepare('UPDATE users SET failed_logins = 0, locked_until = 0 WHERE id = ?').run(user.id);
 
+  // Email turned off since this account signed up: nothing left to activate.
+  if (!user.email_verified_at && !req.app.locals.emailEnabled) {
+    db.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?').run(Date.now(), user.id);
+    user.email_verified_at = Date.now();
+  }
   // Only revealed after a correct password, so it doesn't leak who has signed up.
   if (!user.email_verified_at) {
     if (canIssue(db, user.id, 'verify')) {

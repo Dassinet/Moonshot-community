@@ -102,6 +102,13 @@ const passwordOk = async (db, uid, password) => {
 
 router.get('/settings', requireAuth, (req, res) => res.page(settingsPage(req)));
 
+// Demo members are shared by every visitor, so nobody may change their
+// password or 2FA, or delete them.
+router.use(['/settings/password', '/settings/2fa', '/settings/delete'], (req, res, next) => {
+  if (!req.app.locals.config.demo) return next();
+  res.status(403).page(settingsPage(req, { errors: ['Account security changes are turned off in the demo.'] }));
+});
+
 router.post('/settings/password', requireAuth, sensitive, async (req, res) => {
   const { db, config } = req.app.locals;
   const uid = req.user.id;

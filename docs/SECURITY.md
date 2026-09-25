@@ -14,7 +14,7 @@ and what must be done before a public launch.
 - Optional **TOTP two-factor auth** (RFC 6238, works with any authenticator app), with replay protection. The
   password step only issues a short-lived, HMAC-signed "pending" cookie; a session is created only after the code.
 - Re-authentication (current password) required to change password, disable 2FA or delete the account.
-- **Email activation** is mandatory: accounts can't sign in (and sessions aren't honoured) until the member confirms
+- **Email activation** (when email is configured): accounts can't sign in (and sessions aren't honoured) until the member confirms
   their address. Activation and **password-reset** links are single-use, stored only as SHA-256 hashes, expire (24h /
   1h), are throttled to 3 per account per hour, and are built only from the configured `APP_URL`, never the request's
   Host header (prevents reset-link poisoning). Opening a link shows a confirm button; nothing changes on a GET, so
@@ -47,9 +47,11 @@ and what must be done before a public launch.
   members can message, only authors can delete their posts, only staff reach `/admin` (which returns 404 to others),
   moderators can't act on admins or promote themselves.
 - Blocked or suspended members are indistinguishable from non-existent ones (404).
-- **Private gate**: before anything else, visitors must enter a 6-digit code emailed to them (optionally only to an
-  invite list). Codes are random, stored as HMACs, expire after 10 minutes, allow 5 guesses, and are throttled per
-  email and per IP; the pass is an HMAC-signed, HttpOnly cookie. The gate page and code email carry no branding.
+- **Private mode** (`SITE_PASSWORD`): until the shared password is entered, every page shows only an unbranded
+  screen. Attempts are rate limited per IP, the comparison is constant-time, and the pass is an HMAC-signed HttpOnly
+  cookie bound to the current password, so changing it revokes every pass.
+- **Demo mode**: visitors explore as shared sample members with no credentials. Anything that could lock other
+  visitors out (suspensions, role changes, password/2FA changes, account deletion) is disabled.
 - **Private by default**: everything except the landing, sign-up, sign-in and code-of-conduct pages requires an
   activated account; `robots.txt`, `X-Robots-Tag` and a robots meta tag keep the site out of search engines.
 - Request bodies limited to 20 KB / 100 fields; no file uploads in the MVP; request/header timeouts against slowloris.
@@ -72,8 +74,8 @@ the full 2FA flow (including tampering and replay), and RFC 6238 test vectors.
 
 - [ ] Run behind HTTPS (TLS-terminating proxy) with `NODE_ENV=production`, a strong `SESSION_SECRET`, and
       `TRUST_PROXY` set to your proxy hop count.
-- [x] Email verification and password reset. Configure `RESEND_API_KEY`, `MAIL_FROM` and `APP_URL`, and verify
-      your sending domain (SPF/DKIM) so emails don't land in spam.
+- [ ] Turn on email (Resend: `RESEND_API_KEY`, `MAIL_FROM`, `APP_URL`, with SPF/DKIM on your domain) so accounts
+      are email-verified and members can reset passwords themselves. Without it, anyone can sign up with any address.
 - [ ] Move rate limiting to a shared store (Redis) if running more than one instance; add WAF/bot protection.
 - [ ] Encrypt TOTP secrets at rest (e.g. KMS envelope encryption) and add 2FA recovery codes.
 - [ ] Encrypted, tested database backups; retention policy for audit logs and messages.

@@ -1,8 +1,9 @@
 import { BRAND } from './brand.js';
 
 // Transactional email. In production it sends through Resend's HTTP API
-// (https://resend.com) — no SDK dependency. In development it prints the email
-// (including any links) to the terminal instead.
+// (https://resend.com) when RESEND_API_KEY is set — no SDK dependency.
+// Otherwise email is off: the app works without it, and anything that would
+// have been sent is printed to the server log.
 
 export function createMailer(config) {
   const { resendApiKey, from } = config.mail ?? {};
@@ -10,9 +11,7 @@ export function createMailer(config) {
     if (!from) throw new Error('MAIL_FROM must be set when RESEND_API_KEY is set (e.g. "Moonshots Community <hello@yourdomain.com>").');
     return { send: (msg) => sendWithResend(resendApiKey, from, msg) };
   }
-  if (config.production) {
-    throw new Error('Email is required for account activation: set RESEND_API_KEY and MAIL_FROM.');
-  }
+  // No email service configured: emails are only written to the server log.
   return {
     async send({ to, subject, text }) {
       console.log(`\n📧 Email to ${to}\n   Subject: ${subject}\n${text.replace(/^/gm, '   ')}\n`);

@@ -22,64 +22,36 @@ Sign in with `ada@example.com` / `moonshot-demo-pass`.
 If the page doesn't load, allow Node.js through your computer's firewall when prompted (macOS: System Settings →
 Network → Firewall). Office or guest Wi-Fi networks often block device-to-device traffic; home Wi-Fi works.
 
-## Option 2 — Vercel (a public link you can share)
+## Option 2 — Vercel (a link you can share)
 
-> ⚠️ **Vercel runs this as a demo.** Vercel functions have no permanent disk, so the app starts from sample data and
-> anything you add (new accounts, posts, messages) is **wiped** whenever Vercel recycles the server, often within
-> minutes to hours. You may occasionally be signed out. A yellow banner on every page says so. That's fine for showing
-> people what it looks like; it is not suitable for real members (see Option 3).
+On Vercel the app runs as a **demo**: it starts with 12 sample members, posts and connections. Visitors don't sign up
+or log in. They tap **Explore the demo** and pick a member to explore as (a founder, an investor, a moderator…).
+**No email service, keys or other setup is needed.**
 
-1. Sign in at [vercel.com](https://vercel.com) with your GitHub account.
-2. **Add New… → Project**, and import `dassinet/moonshot-community`. If it isn't listed, choose
-   **Adjust GitHub App Permissions** and grant Vercel access to that repository.
-3. On the configure screen:
-   - **Framework Preset:** `Other`. Leave the build and output settings as they are (`vercel.json` handles them).
-   - **Environment Variables**, add:
-     | Name | Value |
-     | --- | --- |
-     | `SESSION_SECRET` | 64 random characters, e.g. from `openssl rand -hex 32` or any password generator |
-     | `SEED_PASSWORD` | A password of your choice (12+ characters) for the demo accounts. **Required**: the default is public in this repo, so without your own anyone could sign in as the demo admin. |
-     | `APP_URL` | Your site's address, e.g. `https://moonshot-community.vercel.app`. Used in emailed links. |
-     | `RESEND_API_KEY` | From Resend. **Required**: see "Email activation" below. |
-     | `MAIL_FROM` | The sender, e.g. `Private Preview <hello@yourdomain.com>` (keep it neutral if the site should stay low-profile) |
-     | `GATE_ALLOWED` | Optional but recommended: who may get an access code, e.g. `you@gmail.com,@yourcompany.com`. Leave empty to let any email in. |
-4. Click **Deploy**. Vercel deploys the default branch (`main`), so merge the MVP branch first, or open the preview
-   deployment Vercel creates for the `claude/moonshots-community-mvp-25t5ia` branch.
-5. Open the `https://….vercel.app` link on your phone. Sign in with `ada@example.com` (admin) or
-   `marcus@example.com` (investor) and the `SEED_PASSWORD` you chose.
+1. Sign in at [vercel.com](https://vercel.com) with GitHub, then **Add New… → Project** and import
+   `dassinet/moonshot-community`. **Framework Preset:** `Other`.
+2. Optional **Environment Variables**:
+   | Name | What it does |
+   | --- | --- |
+   | `SITE_PASSWORD` | Makes the site **private**. Visitors see only a plain, unbranded "Private preview" page until they enter this password (remembered for 30 days on that device). Leave it out for a public site. |
+   | `SESSION_SECRET` | 64 random characters (e.g. `openssl rand -hex 32`). Recommended: keeps visitors signed in when Vercel restarts. |
+3. **Deploy**, then open the `https://….vercel.app` link on your phone.
 
-If the page shows a server error, open the project in Vercel → **Logs**. The most common cause is a missing
-`SESSION_SECRET` or `SEED_PASSWORD`. Under **Settings → Build and Deployment → Node.js Version**, choose 22.x or newer.
+To switch between public and private later: Vercel → project → **Settings → Environment Variables**, add, change or
+remove `SITE_PASSWORD`, then **Deployments → Redeploy**. Changing the password locks out everyone who used the old one.
 
-## The private gate
+You can delete any `RESEND_API_KEY`, `MAIL_FROM`, `APP_URL`, `SEED_PASSWORD` or `GATE_ALLOWED` variables you added
+earlier; they're no longer needed.
 
-Every visitor first sees a plain, unbranded **Private preview** page. They enter their email, receive a 6-digit
-code, and only then can see the site. The pass lasts 30 days on that device. Signed-in members skip it.
+> ⚠️ Vercel keeps no permanent disk, so demo data resets whenever Vercel recycles the server (often within hours),
+> and everyone shares the same sample members. A yellow banner says so. That's fine for showing people the idea;
+> for real members see Option 3.
 
-- **Invite-only:** set `GATE_ALLOWED` to the emails (or whole `@domains`) you want to let in. Anyone else gets the
-  same "check your email" screen but never receives a code, so they can't tell the list exists.
-- Search engines are told not to index anything.
-- Set `SITE_GATE=off` to remove the gate.
+## Email (optional)
 
-## Email activation (required in production)
-
-New members must click a link in their email before they can sign in, and "Forgot password" also works by email.
-The app sends email through [Resend](https://resend.com), which has a free tier:
-
-1. Create a Resend account and **add your domain** (Domains → Add domain). Resend shows a few DNS records; add them
-   where your domain's DNS is managed (e.g. GoDaddy, Cloudflare, Squarespace). Verification usually takes minutes.
-2. Create an **API key** (API Keys → Create, "Sending access").
-3. In Vercel → your project → **Settings → Environment Variables**, add `RESEND_API_KEY`, `MAIL_FROM` (an address
-   on the domain you verified) and `APP_URL`. Then go to **Deployments** and **Redeploy** the latest deployment.
-
-Until those are set, the site won't start in production. That's deliberate: a members-only site shouldn't quietly
-accept accounts it can't verify. For a quick test without a domain, Resend lets you send from
-`onboarding@resend.dev`, but **only to the email address you signed up to Resend with**.
-
-The demo accounts (`ada@example.com` etc.) come pre-activated so you can still sign in to them.
-
-Developing locally, no email service is needed: activation and reset emails are printed in the terminal, and you
-can copy the link from there.
+The app works without email. New accounts on a real (non-demo) deployment are active straight away, and a
+moderator resets forgotten passwords. To add email activation and "forgot password" emails later, create a
+[Resend](https://resend.com) account, verify your domain, and set `RESEND_API_KEY`, `MAIL_FROM` and `APP_URL`.
 
 ## Option 3 — Real hosting for actual members
 
@@ -88,7 +60,7 @@ The app is a normal Node server with a SQLite file, so it runs unchanged on any 
 - **Railway**, **Render** (paid instance with a disk) or **Fly.io**: create a service from the GitHub repo, attach
   a volume (e.g. mounted at `/data`), and set:
   `NODE_ENV=production`, `SESSION_SECRET=<random>`, `DATABASE_PATH=/data/community.db`, `HOST=0.0.0.0`,
-  `APP_URL=<your https address>`, `RESEND_API_KEY` and `MAIL_FROM` (see "Email activation").
+  and optionally `SITE_PASSWORD` (private) and the email settings above.
   Start command: `npm start`. These hosts provide HTTPS automatically.
 - Then sign up with your own email and run `npm run make-admin -- you@example.com` from the host's shell.
 

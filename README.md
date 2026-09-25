@@ -16,8 +16,9 @@ investors, builders, researchers, mentors, operators, corporate partners, policy
 - **Hubs**: 15 local hubs and 15 interest circles with Discussion / Ask / Offer / Event posts and comments.
 - **Connections** with a required personal note, and **messaging only between connections**.
 - **Safety**: block, report, moderation queue, suspend, hide content, verified badges, audit log.
-- **Private preview gate**: nothing, not even the landing page, is visible until a visitor enters a one-time code sent to their email (optionally invite-list only).
-- **Members-only**: email activation required before sign-in, email password reset, hidden from search engines.
+- **Public or private**: set `SITE_PASSWORD` to hide the whole site behind one shared password (on an unbranded page); leave it unset for a public site. Hidden from search engines either way.
+- **No email needed**: optional email activation and password-reset emails if you add Resend.
+- **Demo mode**: no sign-up or log-in; visitors pick a sample member to explore as.
 - **Account security**: optional 2FA, sign out everywhere, password change (with email alert), permanent account deletion.
 
 ## Quick start
@@ -47,13 +48,11 @@ To make your own account an admin: sign up, then `npm run make-admin -- you@exam
 | `PORT` / `HOST` | `3000` / `127.0.0.1` | |
 | `TRUST_PROXY` | `1` in prod | Number of reverse-proxy hops, so rate limits see real client IPs |
 | `COOKIE_SECURE` | — | `true` to force Secure cookies outside production |
-| `DEMO_MODE` | — | `true` shows a demo banner (always on for the Vercel entry point, which also auto-seeds) |
-| `SEED_PASSWORD` | `moonshot-demo-pass` | Password for demo accounts; **required** on Vercel |
-| `APP_URL` | `http://localhost:3000` | Public base URL for emailed links. **Required in production** (falls back to Vercel's production URL) |
-| `RESEND_API_KEY` / `MAIL_FROM` | — | Email for activation & password reset via [Resend](https://resend.com). **Required in production**; in development emails are printed to the terminal |
+| `DEMO_MODE` | — | `true`: demo banner, and visitors "explore as" sample members instead of signing up or logging in (always on for the Vercel entry point, which also auto-seeds) |
+| `SITE_PASSWORD` | — | Makes the whole site private behind one shared password, on an unbranded page. Unset = public |
+| `SEED_PASSWORD` | `moonshot-demo-pass` | Password for accounts created by `npm run seed` |
+| `RESEND_API_KEY` / `MAIL_FROM` / `APP_URL` | — | Optional email via [Resend](https://resend.com) for account activation and password-reset emails. Without it, accounts are active immediately |
 | `SUPPORT_EMAIL` | — | Optional contact address shown in the footer |
-| `SITE_GATE` | on | The whole site sits behind an unbranded "private preview" page until a visitor enters an emailed 6-digit code (signed-in members skip it). `off` disables it |
-| `GATE_ALLOWED` | — | Invite list: comma-separated emails and/or `@domains` that may receive a code, e.g. `me@x.com,@mycompany.com`. Empty = any email |
 
 In production, run behind an HTTPS reverse proxy (e.g. Caddy, nginx, a managed platform) — see the checklist in
 `docs/SECURITY.md`.
@@ -67,7 +66,8 @@ src/
   matching.js       Connection suggestions
   taxonomy.js       Member types, interests, hubs, report reasons
   brand.js          Brand name, tagline and links (colours: "Brand tokens" in public/styles.css)
-  mailer.js         Email sending (Resend in production, terminal in development)
+  mailer.js         Optional email sending (Resend), otherwise logged
+  gate.js           Optional shared-password private mode (SITE_PASSWORD)
   security/         Passwords, sessions, CSRF, rate limiting, TOTP, input validation
   routes/           auth, home, profile, members, connections, messages, hubs, reports, settings, admin
   views/            Auto-escaping HTML templates and layout

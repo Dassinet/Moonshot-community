@@ -110,7 +110,8 @@ router.get('/admin/reports', (req, res) => {
   });
 });
 
-function suspend(db, actor, userId, why) {
+function suspend(db, actor, userId, why, demo = false) {
+  if (demo) return false; // demo members are shared by every visitor
   const target = db.prepare('SELECT id, role FROM users WHERE id = ?').get(userId);
   if (!target || target.id === actor.id) return false;
   // Moderators can't suspend admins or other moderators.
@@ -137,7 +138,7 @@ router.post('/admin/reports/:id/resolve', (req, res, next) => {
     audit(db, req.user.id, `${report.target_type}.hide`, `${report.target_type}:${report.target_id}`);
   }
   if (action === 'suspend' && target) {
-    if (!suspend(db, req.user, target.ownerId, `report:${id}`)) {
+    if (!suspend(db, req.user, target.ownerId, `report:${id}`, req.app.locals.config.demo)) {
       return res.status(403).type('text').send('You cannot suspend that account.');
     }
   }
@@ -198,7 +199,8 @@ router.post('/admin/users/:id', (req, res, next) => {
   const target = id && db.prepare('SELECT id, role FROM users WHERE id = ?').get(id);
   if (!target) return next();
   const action = v.oneOf(req.body.action, ['verify', 'unverify', 'suspend', 'reinstate', 'role']);
-  const deny = () => res.status(403).type('text').send('Not allowed.');
+  const deny = () =>
+    res.status(403).type('text').send(req.app.locals.config.demo ? 'Suspensions and role changes are turned off in the demo.' : 'Not allowed.');
 
   switch (action) {
     case 'verify':
@@ -207,7 +209,7 @@ router.post('/admin/users/:id', (req, res, next) => {
       audit(db, req.user.id, `user.${action}`, `user:${id}`);
       break;
     case 'suspend':
-      if (!suspend(db, req.user, id, 'manual')) return deny();
+      if (!suspend(db, req.user, id, 'manual', req.app.locals.config.demo)) return deny();
       break;
     case 'reinstate':
       if (!isAdmin(req) && target.role !== 'member') return deny();
@@ -215,6 +217,7 @@ router.post('/admin/users/:id', (req, res, next) => {
       audit(db, req.user.id, 'user.reinstate', `user:${id}`);
       break;
     case 'role': {
+      if (req.app.locals.config.demo) return deny();
       const role = v.oneOf(req.body.role, ['member', 'moderator', 'admin']);
       if (!isAdmin(req) || !role || id === req.user.id) return deny();
       db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, id);

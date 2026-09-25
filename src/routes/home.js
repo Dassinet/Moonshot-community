@@ -8,7 +8,7 @@ import { postSummary } from './hubs.js';
 const router = Router();
 
 router.get('/', (req, res) => {
-  if (!req.user) return res.page({ body: landing() });
+  if (!req.user) return res.page({ body: landing({ demo: req.app.locals.config.demo }) });
   const { db } = req.app.locals;
   const uid = req.user.id;
 

@@ -50,13 +50,3 @@ export function passwordChangedEmail({ name, resetUrl }) {
   };
 }
 
-export function accessCodeEmail({ code }) {
-  return {
-    subject: `Your private preview access code: ${code}`,
-    text: `Your access code is ${code}\n\nEnter it on the page where you requested it. It expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
-    html: wrap('Your access code', [
-      html`<span style="display:inline-block;font-family:Menlo,Consolas,monospace;font-size:32px;letter-spacing:8px;font-weight:bold;color:#ffe600">${code}</span>`,
-      'Enter it on the page where you requested it. It expires in 10 minutes.',
-    ], null, { branded: false }),
-  };
-}

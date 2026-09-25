@@ -15,11 +15,13 @@ export function linkIn(email, path) {
   return m && m[1];
 }
 
-// The private gate is covered by gate.test.js; other suites test the app behind it.
-export async function startApp({ gate = false, gateAllowed = '' } = {}) {
+// Options: sitePassword (private gate), email (false = no email service),
+// demo (explore-as-member mode).
+export async function startApp({ sitePassword = '', email = true, demo = false } = {}) {
   mailer = memoryMailer();
   const config = {
-    ...loadConfig({ NODE_ENV: 'test', APP_URL, SITE_GATE: gate ? 'on' : 'off', GATE_ALLOWED: gateAllowed }),
+    ...loadConfig({ NODE_ENV: 'test', APP_URL, SITE_PASSWORD: sitePassword, ...(demo && { DEMO_MODE: 'true' }) }),
+    ...(!email && { emailEnabled: false }),
     dbPath: ':memory:',
     trustProxy: 'loopback',
     mailer,
@@ -70,7 +72,11 @@ export class Client {
   }
 
   async post(path, fields = {}, { csrf = true, headers = {} } = {}) {
-    if (csrf && !this.csrf) await this.get('/login');
+    if (csrf && !this.csrf) {
+      await this.get('/login');
+      if (!this.csrf) await this.get('/private');
+      if (!this.csrf) await this.get('/explore');
+    }
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(fields)) {
       for (const item of Array.isArray(v) ? v : [v]) params.append(k, item);

@@ -1,13 +1,16 @@
 import { html } from './html.js';
 import { MEMBER_TYPES } from '../taxonomy.js';
 
-export function landing() {
+export function landing({ demo = false } = {}) {
+  const cta = demo
+    ? html`<a class="btn" href="/explore">Explore the demo</a>`
+    : html`<a class="btn" href="/signup">Join the community</a><a class="btn ghost" href="/login">Member sign in</a>`;
   return html`<section class="hero center">
     <p class="eyebrow">Private · Members only</p>
     <h1>Where moonshot thinkers<br><span class="glow">find each other.</span></h1>
     <p class="lead">A members-only network for the Moonshots community, connecting founders, investors, builders,
       researchers and creators by <strong>where they are</strong> and <strong>what they're building</strong>.</p>
-    <div class="hero-actions"><a class="btn" href="/signup">Join the community</a><a class="btn ghost" href="/login">Member sign in</a></div>
+    <div class="hero-actions">${cta}</div>
     <div class="pill-row"><span>AI</span><span>Longevity</span><span>Space</span><span>Energy</span><span>Climate</span><span>Robotics</span><span>Biotech</span><span>+ more</span></div>
   </section>
   <section class="grid three">
@@ -25,7 +28,7 @@ export function landing() {
   <section class="card">
     <span class="eyebrow">Private and safe by design</span>
     <ul class="ticks">
-      <li>Members only: every account is activated by email, and nothing is visible to the public or search engines.</li>
+      <li>Members only: profiles, hubs and messages are only visible to signed-in members, and search engines are kept out.</li>
       <li>Your email is never shown. Location is city-level only.</li>
       <li>Messages only open once both people accept a connection, so there's no cold-inbox spam.</li>
       <li>Outreach limits protect investors and high-profile members.</li>
@@ -34,7 +37,7 @@ export function landing() {
   </section>
   <section class="closing">
     <h2>The future is built together.<br><span class="glow">Find your people.</span></h2>
-    <p class="hero-actions"><a class="btn" href="/signup">Join the community</a></p>
+    <p class="hero-actions">${demo ? html`<a class="btn" href="/explore">Explore the demo</a>` : html`<a class="btn" href="/signup">Join the community</a>`}</p>
   </section>`;
 }
 

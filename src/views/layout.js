@@ -94,13 +94,16 @@ export function layout(req, { title, body, wide = false }) {
           <div class="menu-body">
             <a href="/members/${u.id}">My profile</a><a href="/profile/edit">Edit profile</a><a href="/settings">Security &amp; settings</a>
             <a href="/code-of-conduct">Code of conduct</a>
+            ${req.app.locals.config?.demo ? html`<a href="/explore">Switch demo member</a>` : ''}
             <form method="post" action="/logout">${csrfField(req)}<button class="linklike">Sign out</button></form>
           </div></details>`
-      : html`<a href="/code-of-conduct">Code of conduct</a><a href="/login">Sign in</a><a class="btn small" href="/signup">Join</a>`}
+      : req.app.locals.config?.demo
+        ? html`<a href="/code-of-conduct">Code of conduct</a><a class="btn small" href="/explore">Explore the demo</a>`
+        : html`<a href="/code-of-conduct">Code of conduct</a><a href="/login">Sign in</a><a class="btn small" href="/signup">Join</a>`}
   </nav>
 </header>
 ${req.app.locals.config?.demo
-  ? html`<div class="demo-banner" role="note"><strong>Demo site.</strong> Sample data resets regularly — don't enter real personal information or passwords you use elsewhere.</div>`
+  ? html`<div class="demo-banner" role="note"><strong>Demo site.</strong> Explore as any sample member. Everyone shares the same demo data, and it resets regularly, so don't enter anything real.</div>`
   : ''}
 <main class="${wide ? 'wide' : ''}">
   ${flash ? html`<div class="flash" role="status">${flash}</div>` : ''}
