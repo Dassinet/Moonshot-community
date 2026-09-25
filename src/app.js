@@ -10,6 +10,7 @@ import { csrfMiddleware } from './security/csrf.js';
 import { RateLimiter, limit } from './security/rateLimit.js';
 import { layout, FLASH } from './views/layout.js';
 import { html } from './views/html.js';
+import gateRoutes, { gateMiddleware } from './gate.js';
 import authRoutes from './routes/auth.js';
 import homeRoutes from './routes/home.js';
 import profileRoutes from './routes/profile.js';
@@ -39,6 +40,12 @@ export function loadConfig(env = process.env) {
     demo: env.DEMO_MODE === 'true',
     appUrl: appUrl(env, production),
     mail: { resendApiKey: env.RESEND_API_KEY, from: env.MAIL_FROM },
+    // Private gate: every page needs an emailed access code (or a signed-in
+    // member) before anything is shown. On unless SITE_GATE=off.
+    gate: env.SITE_GATE !== 'off',
+    // Optional invite list: comma-separated emails and/or @domains allowed to
+    // receive a code. Empty means any email address can request one.
+    gateAllowed: (env.GATE_ALLOWED ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean),
   };
 }
 
@@ -120,6 +127,8 @@ export function createApp(config = loadConfig(), db = openDb(config.dbPath)) {
 
   app.use(sessionMiddleware(db, config));
   app.use(csrfMiddleware(config));
+  app.use(gateMiddleware(config));
+  app.use(gateRoutes);
 
   const unread = db.prepare(
     `SELECT COUNT(*) AS n FROM messages m

@@ -16,7 +16,8 @@ investors, builders, researchers, mentors, operators, corporate partners, policy
 - **Hubs**: 15 local hubs and 15 interest circles with Discussion / Ask / Offer / Event posts and comments.
 - **Connections** with a required personal note, and **messaging only between connections**.
 - **Safety**: block, report, moderation queue, suspend, hide content, verified badges, audit log.
-- **Private, members-only**: email activation required before sign-in, email password reset, hidden from search engines.
+- **Private preview gate**: nothing, not even the landing page, is visible until a visitor enters a one-time code sent to their email (optionally invite-list only).
+- **Members-only**: email activation required before sign-in, email password reset, hidden from search engines.
 - **Account security**: optional 2FA, sign out everywhere, password change (with email alert), permanent account deletion.
 
 ## Quick start
@@ -51,6 +52,8 @@ To make your own account an admin: sign up, then `npm run make-admin -- you@exam
 | `APP_URL` | `http://localhost:3000` | Public base URL for emailed links. **Required in production** (falls back to Vercel's production URL) |
 | `RESEND_API_KEY` / `MAIL_FROM` | — | Email for activation & password reset via [Resend](https://resend.com). **Required in production**; in development emails are printed to the terminal |
 | `SUPPORT_EMAIL` | — | Optional contact address shown in the footer |
+| `SITE_GATE` | on | The whole site sits behind an unbranded "private preview" page until a visitor enters an emailed 6-digit code (signed-in members skip it). `off` disables it |
+| `GATE_ALLOWED` | — | Invite list: comma-separated emails and/or `@domains` that may receive a code, e.g. `me@x.com,@mycompany.com`. Empty = any email |
 
 In production, run behind an HTTPS reverse proxy (e.g. Caddy, nginx, a managed platform) — see the checklist in
 `docs/SECURITY.md`.

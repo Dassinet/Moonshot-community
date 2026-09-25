@@ -58,7 +58,7 @@ function signupPage(req, { values = {}, errors = [] } = {}) {
 
 router.get('/signup', (req, res) => {
   if (req.user) return res.redirect(303, '/');
-  res.page(signupPage(req));
+  res.page(signupPage(req, { values: { email: req.gateEmail ?? '' } }));
 });
 
 router.post('/signup', limit(signupLimiter, (req) => `signup:${req.ip}`), async (req, res) => {
@@ -108,6 +108,15 @@ router.post('/signup', limit(signupLimiter, (req) => `signup:${req.ip}`), async 
         "INSERT OR IGNORE INTO hub_members (hub_id, user_id, joined_at) SELECT id, ?, ? FROM hubs WHERE slug = 'global-online'",
       ).run(userId, now);
       audit(db, userId, 'user.signup', `user:${userId}`);
+      // The visitor already proved they own this address with a gate code, so
+      // skip the activation email and sign them straight in.
+      if (req.gateEmail && req.gateEmail === values.email) {
+        db.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?').run(now, userId);
+        req.rotateCsrf();
+        startSession(db, config, res, userId);
+        res.flash('welcome');
+        return res.redirect(303, '/profile/edit');
+      }
       await sendActivation(req, { id: userId, display_name: values.display_name, email: values.email });
     }
   } catch (err) {

@@ -41,7 +41,8 @@ Network → Firewall). Office or guest Wi-Fi networks often block device-to-devi
      | `SEED_PASSWORD` | A password of your choice (12+ characters) for the demo accounts. **Required**: the default is public in this repo, so without your own anyone could sign in as the demo admin. |
      | `APP_URL` | Your site's address, e.g. `https://moonshot-community.vercel.app`. Used in emailed links. |
      | `RESEND_API_KEY` | From Resend. **Required**: see "Email activation" below. |
-     | `MAIL_FROM` | The sender, e.g. `Moonshots Community <hello@yourdomain.com>` |
+     | `MAIL_FROM` | The sender, e.g. `Private Preview <hello@yourdomain.com>` (keep it neutral if the site should stay low-profile) |
+     | `GATE_ALLOWED` | Optional but recommended: who may get an access code, e.g. `you@gmail.com,@yourcompany.com`. Leave empty to let any email in. |
 4. Click **Deploy**. Vercel deploys the default branch (`main`), so merge the MVP branch first, or open the preview
    deployment Vercel creates for the `claude/moonshots-community-mvp-25t5ia` branch.
 5. Open the `https://….vercel.app` link on your phone. Sign in with `ada@example.com` (admin) or
@@ -49,6 +50,16 @@ Network → Firewall). Office or guest Wi-Fi networks often block device-to-devi
 
 If the page shows a server error, open the project in Vercel → **Logs**. The most common cause is a missing
 `SESSION_SECRET` or `SEED_PASSWORD`. Under **Settings → Build and Deployment → Node.js Version**, choose 22.x or newer.
+
+## The private gate
+
+Every visitor first sees a plain, unbranded **Private preview** page. They enter their email, receive a 6-digit
+code, and only then can see the site. The pass lasts 30 days on that device. Signed-in members skip it.
+
+- **Invite-only:** set `GATE_ALLOWED` to the emails (or whole `@domains`) you want to let in. Anyone else gets the
+  same "check your email" screen but never receives a code, so they can't tell the list exists.
+- Search engines are told not to index anything.
+- Set `SITE_GATE=off` to remove the gate.
 
 ## Email activation (required in production)
 

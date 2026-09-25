@@ -15,10 +15,11 @@ export function linkIn(email, path) {
   return m && m[1];
 }
 
-export async function startApp() {
+// The private gate is covered by gate.test.js; other suites test the app behind it.
+export async function startApp({ gate = false, gateAllowed = '' } = {}) {
   mailer = memoryMailer();
   const config = {
-    ...loadConfig({ NODE_ENV: 'test', APP_URL }),
+    ...loadConfig({ NODE_ENV: 'test', APP_URL, SITE_GATE: gate ? 'on' : 'off', GATE_ALLOWED: gateAllowed }),
     dbPath: ':memory:',
     trustProxy: 'loopback',
     mailer,

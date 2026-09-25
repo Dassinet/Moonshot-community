@@ -255,3 +255,8 @@ td select { width: auto; padding: 0.25rem; }
   .hero-actions .btn { width: 100%; }
 }
 .card > .eyebrow { display: block; }
+
+/* Private gate: deliberately neutral — no brand colours before access */
+body.gate { --yellow: #f2f2f2; --cyan: #9a9ba3; }
+body.gate main { padding-top: 12vh; }
+.gate-card h1 { font-size: 1.8rem; }

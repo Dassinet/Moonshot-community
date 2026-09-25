@@ -4,12 +4,12 @@ import { BRAND } from '../brand.js';
 // Plain-text + HTML email bodies. Names are escaped in the HTML version like
 // everywhere else; links are built only from the configured APP_URL.
 
-function wrap(title, paragraphs, button) {
+function wrap(title, paragraphs, button, { branded = true } = {}) {
   return html`<!doctype html><html><body style="margin:0;background:#000000;font-family:Helvetica,Arial,sans-serif;color:#f2f2f2">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
   <table role="presentation" width="100%" style="max-width:520px;background:#0b0b0c;border:1px solid #1f2024">
   <tr><td style="padding:28px">
-    <p style="margin:0 0 22px;font-weight:900;font-style:italic;letter-spacing:-0.02em;text-transform:uppercase;font-size:20px;color:#f2f2f2">${BRAND.shortName} <span style="color:#ffe600">/ Community</span></p>
+${branded ? html`<p style="margin:0 0 22px;font-weight:900;font-style:italic;letter-spacing:-0.02em;text-transform:uppercase;font-size:20px;color:#f2f2f2">${BRAND.shortName} <span style="color:#ffe600">/ Community</span></p>` : ''}
     <h1 style="margin:0 0 16px;font-size:22px;color:#ffffff">${title}</h1>
     ${paragraphs.map((p) => html`<p style="margin:0 0 14px;line-height:1.55">${p}</p>`)}
     ${button ? html`<p style="margin:24px 0"><a href="${button.url}" style="background:#ffe600;color:#000000;padding:13px 24px;text-decoration:none;font-weight:bold">${button.label}</a></p>
@@ -47,5 +47,16 @@ export function passwordChangedEmail({ name, resetUrl }) {
     subject: `Your ${BRAND.name} password was changed`,
     text: `Hi ${name},\n\nYour password was just changed and all other devices were signed out.\n\nIf this wasn't you, reset your password immediately: ${resetUrl}`,
     html: wrap('Your password was changed', ['Your password was just changed and all other devices were signed out.', "If this wasn't you, reset your password immediately."], { url: resetUrl, label: 'Reset my password' }),
+  };
+}
+
+export function accessCodeEmail({ code }) {
+  return {
+    subject: `Your private preview access code: ${code}`,
+    text: `Your access code is ${code}\n\nEnter it on the page where you requested it. It expires in 10 minutes.\n\nIf you didn't request this, ignore this email.`,
+    html: wrap('Your access code', [
+      html`<span style="display:inline-block;font-family:Menlo,Consolas,monospace;font-size:32px;letter-spacing:8px;font-weight:bold;color:#ffe600">${code}</span>`,
+      'Enter it on the page where you requested it. It expires in 10 minutes.',
+    ], null, { branded: false }),
   };
 }

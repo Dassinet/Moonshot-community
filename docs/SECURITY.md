@@ -47,6 +47,9 @@ and what must be done before a public launch.
   members can message, only authors can delete their posts, only staff reach `/admin` (which returns 404 to others),
   moderators can't act on admins or promote themselves.
 - Blocked or suspended members are indistinguishable from non-existent ones (404).
+- **Private gate**: before anything else, visitors must enter a 6-digit code emailed to them (optionally only to an
+  invite list). Codes are random, stored as HMACs, expire after 10 minutes, allow 5 guesses, and are throttled per
+  email and per IP; the pass is an HMAC-signed, HttpOnly cookie. The gate page and code email carry no branding.
 - **Private by default**: everything except the landing, sign-up, sign-in and code-of-conduct pages requires an
   activated account; `robots.txt`, `X-Robots-Tag` and a robots meta tag keep the site out of search engines.
 - Request bodies limited to 20 KB / 100 fields; no file uploads in the MVP; request/header timeouts against slowloris.
