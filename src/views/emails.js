@@ -5,16 +5,16 @@ import { BRAND } from '../brand.js';
 // everywhere else; links are built only from the configured APP_URL.
 
 function wrap(title, paragraphs, button) {
-  return html`<!doctype html><html><body style="margin:0;background:#07080f;font-family:Arial,Helvetica,sans-serif;color:#e9ebf5">
+  return html`<!doctype html><html><body style="margin:0;background:#000000;font-family:Helvetica,Arial,sans-serif;color:#f2f2f2">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 16px">
-  <table role="presentation" width="100%" style="max-width:520px;background:#10131f;border:1px solid #232842;border-radius:14px">
+  <table role="presentation" width="100%" style="max-width:520px;background:#0b0b0c;border:1px solid #1f2024">
   <tr><td style="padding:28px">
-    <p style="margin:0 0 20px;font-weight:bold;letter-spacing:0.08em;text-transform:uppercase;font-size:13px;color:#ff7a3d">🚀 ${BRAND.name}</p>
+    <p style="margin:0 0 22px;font-weight:900;font-style:italic;letter-spacing:-0.02em;text-transform:uppercase;font-size:20px;color:#f2f2f2">${BRAND.shortName} <span style="color:#ffe600">/ Community</span></p>
     <h1 style="margin:0 0 16px;font-size:22px;color:#ffffff">${title}</h1>
     ${paragraphs.map((p) => html`<p style="margin:0 0 14px;line-height:1.55">${p}</p>`)}
-    ${button ? html`<p style="margin:24px 0"><a href="${button.url}" style="background:#ff6a2b;color:#ffffff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:bold">${button.label}</a></p>
-      <p style="margin:0 0 14px;font-size:12px;color:#9aa1bd">Or paste this link into your browser:<br>${button.url}</p>` : ''}
-    <p style="margin:24px 0 0;font-size:12px;color:#9aa1bd">If you didn't request this, you can safely ignore this email.</p>
+    ${button ? html`<p style="margin:24px 0"><a href="${button.url}" style="background:#ffe600;color:#000000;padding:13px 24px;text-decoration:none;font-weight:bold">${button.label}</a></p>
+      <p style="margin:0 0 14px;font-size:12px;color:#9a9ba3">Or paste this link into your browser:<br>${button.url}</p>` : ''}
+    <p style="margin:24px 0 0;font-size:12px;color:#9a9ba3">If you didn't request this, you can safely ignore this email.</p>
   </td></tr></table></td></tr></table></body></html>`.toString();
 }
 

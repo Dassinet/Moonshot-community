@@ -78,13 +78,13 @@ export function layout(req, { title, body, wide = false }) {
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>${title ? `${title} · ` : ''}${BRAND.name}</title>
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#06070d">
+<meta name="theme-color" content="#000000">
 <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="/"><img src="/static/logo.svg" alt=""><span>${BRAND.shortName}</span><em>Community</em></a>
+  <a class="brand" href="/" aria-label="${BRAND.name} home"><span>${BRAND.shortName}</span><span class="slash" aria-hidden="true">/</span><span class="sub">Community</span></a>
   <nav>
     ${u
       ? html`<a href="/hubs">Hubs</a><a href="/members">Members</a><a href="/connections">Connections</a>

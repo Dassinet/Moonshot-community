@@ -3,27 +3,27 @@ import { MEMBER_TYPES } from '../taxonomy.js';
 
 export function landing() {
   return html`<section class="hero center">
-    <p class="eyebrow">Private · Members-only community</p>
+    <p class="eyebrow">Private · Members only</p>
     <h1>Where moonshot thinkers<br><span class="glow">find each other.</span></h1>
-    <p class="lead">A members-only network for the Moonshots audience, connecting founders, investors, builders,
-      researchers and mentors by <strong>where they are</strong> and <strong>what they're building</strong>.</p>
-    <div class="hero-actions"><a class="btn" href="/signup">Join the community</a> <a class="btn ghost" href="/login">Member sign in</a></div>
-    <div class="pill-row"><span>🤖 AI</span><span>🧬 Longevity</span><span>🛰️ Space</span><span>⚡ Energy</span><span>🌍 Climate</span><span>🦾 Robotics</span><span>+ more</span></div>
+    <p class="lead">A members-only network for the Moonshots community, connecting founders, investors, builders,
+      researchers and creators by <strong>where they are</strong> and <strong>what they're building</strong>.</p>
+    <div class="hero-actions"><a class="btn" href="/signup">Join the community</a><a class="btn ghost" href="/login">Member sign in</a></div>
+    <div class="pill-row"><span>AI</span><span>Longevity</span><span>Space</span><span>Energy</span><span>Climate</span><span>Robotics</span><span>Biotech</span><span>+ more</span></div>
   </section>
   <section class="grid three">
-    <article class="card feature"><span class="icon">📍</span><h2>Local hubs</h2><p>City chapters from the Bay Area to Sydney. Meet the
-      people building the future near you, and turn online conversations into meetups.</p></article>
-    <article class="card feature"><span class="icon">🧭</span><h2>Interest circles</h2><p>Go deep on AI, longevity, space, energy, biotech,
-      robotics and more, with people who are actually working on them.</p></article>
-    <article class="card feature"><span class="icon">🤝</span><h2>Warm introductions</h2><p>Smart matching pairs founders with investors,
-      builders with founders and mentors with rising talent. Every intro starts with a personal note.</p></article>
+    <article class="card feature"><span class="kicker">01 · Local hubs</span><h2>Meet the people near you</h2><p>City chapters from LA and
+      the Bay Area to London, Dubai and Sydney. Turn online conversations into real-world meetups.</p></article>
+    <article class="card feature"><span class="kicker">02 · Interest circles</span><h2>Go deep on your moonshot</h2><p>AI, longevity,
+      space, energy, biotech, robotics and more, with the people actually working on them.</p></article>
+    <article class="card feature"><span class="kicker">03 · Warm intros</span><h2>Connect with intent</h2><p>Smart matching pairs
+      founders with investors, builders with founders and mentors with rising talent. Every intro starts with a personal note.</p></article>
   </section>
   <section class="card">
-    <h2>Built for everyone in the ecosystem</h2>
+    <span class="eyebrow">Built for the whole ecosystem</span>
     <div class="badges">${MEMBER_TYPES.map((t) => html`<span class="badge type-${t.key}">${t.label}</span>`)}</div>
   </section>
   <section class="card">
-    <h2>Private and safe by design</h2>
+    <span class="eyebrow">Private and safe by design</span>
     <ul class="ticks">
       <li>Members only: every account is activated by email, and nothing is visible to the public or search engines.</li>
       <li>Your email is never shown. Location is city-level only.</li>
@@ -31,6 +31,10 @@ export function landing() {
       <li>Outreach limits protect investors and high-profile members.</li>
       <li>Verified badges, one-click block and report, optional two-factor sign-in, and full account deletion.</li>
     </ul>
+  </section>
+  <section class="closing">
+    <h2>The future is built together.<br><span class="glow">Find your people.</span></h2>
+    <p class="hero-actions"><a class="btn" href="/signup">Join the community</a></p>
   </section>`;
 }
 
