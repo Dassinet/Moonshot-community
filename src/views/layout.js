@@ -94,6 +94,9 @@ export function layout(req, { title, body, wide = false }) {
       : html`<a href="/code-of-conduct">Code of conduct</a><a href="/login">Sign in</a><a class="btn small" href="/signup">Join</a>`}
   </nav>
 </header>
+${req.app.locals.config?.demo
+  ? html`<div class="demo-banner" role="note"><strong>Demo site.</strong> Sample data resets regularly — don't enter real personal information or passwords you use elsewhere.</div>`
+  : ''}
 <main class="${wide ? 'wide' : ''}">
   ${flash ? html`<div class="flash" role="status">${flash}</div>` : ''}
   ${body}

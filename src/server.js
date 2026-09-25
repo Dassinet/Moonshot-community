@@ -1,3 +1,4 @@
+import { networkInterfaces } from 'node:os';
 import { createApp, loadConfig } from './app.js';
 
 const config = loadConfig();
@@ -6,9 +7,19 @@ if (!process.env.SESSION_SECRET) {
 }
 const app = createApp(config);
 const port = Number(process.env.PORT) || 3000;
-const host = process.env.HOST || '127.0.0.1';
+// `--lan` listens on your Wi-Fi network so you can open the app on your phone.
+const lan = process.argv.includes('--lan');
+const host = process.env.HOST || (lan ? '0.0.0.0' : '127.0.0.1');
 const server = app.listen(port, host, () => {
-  console.log(`Moonshots Community running at http://${host}:${port} (${config.production ? 'production' : 'development'})`);
+  console.log(`Moonshots Community running at http://127.0.0.1:${port} (${config.production ? 'production' : 'development'})`);
+  if (lan) {
+    const ips = Object.values(networkInterfaces())
+      .flat()
+      .filter((i) => i && i.family === 'IPv4' && !i.internal)
+      .map((i) => i.address);
+    console.log('📱 On a phone connected to the same Wi-Fi, open:');
+    for (const ip of ips) console.log(`   http://${ip}:${port}`);
+  }
 });
 
 // Slowloris-style protection.

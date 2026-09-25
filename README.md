@@ -6,6 +6,7 @@ investors, builders, researchers, mentors, operators, corporate partners, policy
 
 - 📄 Product brief, member types, metrics and roadmap: [`docs/MVP.md`](docs/MVP.md)
 - 🔒 Security model and pre-launch checklist: [`docs/SECURITY.md`](docs/SECURITY.md)
+- 📱 Viewing it on your phone / deploying (Wi-Fi, Vercel demo, real hosting): [`docs/DEPLOY.md`](docs/DEPLOY.md)
 
 ## Features
 
@@ -25,6 +26,7 @@ Requires Node.js 22.13+ (uses the built-in `node:sqlite`; the only dependencies 
 npm install
 npm run seed      # optional: 12 demo members, posts and connections
 npm run dev       # http://127.0.0.1:3000
+npm run dev:phone # same, plus a link to open on a phone on your Wi-Fi
 npm test
 ```
 
@@ -43,6 +45,8 @@ To make your own account an admin: sign up, then `npm run make-admin -- you@exam
 | `PORT` / `HOST` | `3000` / `127.0.0.1` | |
 | `TRUST_PROXY` | `1` in prod | Number of reverse-proxy hops, so rate limits see real client IPs |
 | `COOKIE_SECURE` | — | `true` to force Secure cookies outside production |
+| `DEMO_MODE` | — | `true` shows a demo banner (always on for the Vercel entry point, which also auto-seeds) |
+| `SEED_PASSWORD` | `moonshot-demo-pass` | Password for demo accounts; **required** on Vercel |
 
 In production, run behind an HTTPS reverse proxy (e.g. Caddy, nginx, a managed platform) — see the checklist in
 `docs/SECURITY.md`.
@@ -59,6 +63,7 @@ src/
   routes/           auth, home, profile, members, connections, messages, hubs, reports, settings, admin
   views/            Auto-escaping HTML templates and layout
 public/styles.css   All styling (no client-side JavaScript)
+api/index.js        Vercel entry point (demo mode) — see docs/DEPLOY.md
 scripts/            seed + make-admin
 test/               Integration tests for the security-critical flows
 ```

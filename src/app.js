@@ -34,6 +34,8 @@ export function loadConfig(env = process.env) {
     secure: production || env.COOKIE_SECURE === 'true',
     dbPath: env.DATABASE_PATH ?? (production ? './data/community.db' : './data/dev.db'),
     trustProxy: env.TRUST_PROXY ?? (production ? '1' : 'false'),
+    // Demo deployments show a banner and are auto-seeded with sample data.
+    demo: env.DEMO_MODE === 'true',
   };
 }
 

@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node --disable-warning=ExperimentalWarning src/server.js",
     "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "dev:phone": "node --disable-warning=ExperimentalWarning --watch src/server.js --lan",
     "seed": "node --disable-warning=ExperimentalWarning scripts/seed.js",
     "make-admin": "node --disable-warning=ExperimentalWarning scripts/make-admin.js",
     "test": "node --disable-warning=ExperimentalWarning --test 'test/**/*.test.js'"
