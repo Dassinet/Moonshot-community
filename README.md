@@ -16,7 +16,8 @@ investors, builders, researchers, mentors, operators, corporate partners, policy
 - **Hubs**: 15 local hubs and 15 interest circles with Discussion / Ask / Offer / Event posts and comments.
 - **Connections** with a required personal note, and **messaging only between connections**.
 - **Safety**: block, report, moderation queue, suspend, hide content, verified badges, audit log.
-- **Account security**: optional 2FA, sign out everywhere, password change, permanent account deletion.
+- **Private, members-only**: email activation required before sign-in, email password reset, hidden from search engines.
+- **Account security**: optional 2FA, sign out everywhere, password change (with email alert), permanent account deletion.
 
 ## Quick start
 
@@ -47,6 +48,9 @@ To make your own account an admin: sign up, then `npm run make-admin -- you@exam
 | `COOKIE_SECURE` | — | `true` to force Secure cookies outside production |
 | `DEMO_MODE` | — | `true` shows a demo banner (always on for the Vercel entry point, which also auto-seeds) |
 | `SEED_PASSWORD` | `moonshot-demo-pass` | Password for demo accounts; **required** on Vercel |
+| `APP_URL` | `http://localhost:3000` | Public base URL for emailed links. **Required in production** (falls back to Vercel's production URL) |
+| `RESEND_API_KEY` / `MAIL_FROM` | — | Email for activation & password reset via [Resend](https://resend.com). **Required in production**; in development emails are printed to the terminal |
+| `SUPPORT_EMAIL` | — | Optional contact address shown in the footer |
 
 In production, run behind an HTTPS reverse proxy (e.g. Caddy, nginx, a managed platform) — see the checklist in
 `docs/SECURITY.md`.
@@ -59,10 +63,12 @@ src/
   db.js             Schema (SQLite) and shared queries
   matching.js       Connection suggestions
   taxonomy.js       Member types, interests, hubs, report reasons
+  brand.js          Brand name, tagline and links (colours: "Brand tokens" in public/styles.css)
+  mailer.js         Email sending (Resend in production, terminal in development)
   security/         Passwords, sessions, CSRF, rate limiting, TOTP, input validation
   routes/           auth, home, profile, members, connections, messages, hubs, reports, settings, admin
   views/            Auto-escaping HTML templates and layout
-public/styles.css   All styling (no client-side JavaScript)
+public/styles.css   All styling (no client-side JavaScript); logo.svg and self-hosted fonts in public/
 api/index.js        Vercel entry point (demo mode) — see docs/DEPLOY.md
 scripts/            seed + make-admin
 test/               Integration tests for the security-critical flows

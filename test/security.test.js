@@ -34,10 +34,7 @@ test('signup creates a session and the member pages require auth', async () => {
 
 test('session cookie is HttpOnly and SameSite', async () => {
   const c = new Client(ctx.base);
-  await c.get('/signup');
-  const res = await c.post('/signup', {
-    display_name: 'Cookie Carl', email: 'carl@example.com', password: 'a very long passphrase', accept_coc: 'yes',
-  });
+  const res = await c.signup({ display_name: 'Cookie Carl', email: 'carl@example.com' });
   const sid = res.headers.getSetCookie().find((h) => h.startsWith('mc_sid='));
   assert.ok(sid);
   assert.match(sid, /HttpOnly/);

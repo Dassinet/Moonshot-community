@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
   locked_until    INTEGER NOT NULL DEFAULT 0,
   totp_secret     TEXT,
   totp_last_step  INTEGER NOT NULL DEFAULT 0,
+  email_verified_at INTEGER,             -- NULL until the member clicks their activation link
   coc_accepted_at INTEGER NOT NULL,
   created_at      INTEGER NOT NULL
 );
@@ -138,6 +139,17 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at INTEGER NOT NULL
 );
 
+-- Single-use email tokens (activation, password reset). Only the SHA-256 of
+-- the token is stored, like sessions.
+CREATE TABLE IF NOT EXISTS email_tokens (
+  id         TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose    TEXT NOT NULL CHECK (purpose IN ('verify','reset')),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS email_tokens_user ON email_tokens(user_id, purpose, created_at);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id         INTEGER PRIMARY KEY,
   actor_id   INTEGER,
@@ -152,8 +164,19 @@ export function openDb(path = ':memory:') {
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   db.exec(SCHEMA);
+  migrate(db);
   seedTaxonomy(db);
   return db;
+}
+
+// Upgrades databases created by earlier versions.
+function migrate(db) {
+  const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!cols.includes('email_verified_at')) {
+    db.exec('ALTER TABLE users ADD COLUMN email_verified_at INTEGER');
+    // Accounts that existed before email activation are treated as activated.
+    db.exec('UPDATE users SET email_verified_at = created_at');
+  }
 }
 
 function seedTaxonomy(db) {

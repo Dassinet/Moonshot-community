@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword, passwordProblems, PASSWORD_MIN } from '..
 import { startSession, endAllSessions, endSession } from '../security/sessions.js';
 import { generateSecret, verifyCode, otpauthUri } from '../security/totp.js';
 import { audit } from '../db.js';
+import { passwordChangedEmail } from '../views/emails.js';
 
 const router = Router();
 // Re-authentication attempts (password confirmations) are rate limited too.
@@ -115,6 +116,9 @@ router.post('/settings/password', requireAuth, sensitive, async (req, res) => {
   req.rotateCsrf();
   startSession(db, config, res, uid);
   audit(db, uid, 'auth.password_changed', `user:${uid}`);
+  await req.app.locals.mailer
+    .send({ to: req.user.email, ...passwordChangedEmail({ name: req.user.displayName, resetUrl: `${config.appUrl}/forgot` }) })
+    .catch((err) => console.error('notice email failed:', err.message));
   res.flash('password-changed');
   res.redirect(303, '/settings');
 });

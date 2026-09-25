@@ -35,8 +35,8 @@ export async function seedDemo(db, password = DEFAULT_DEMO_PASSWORD) {
     const email = `${name.split(' ')[0].toLowerCase()}@example.com`;
     const created = now - (60 - i * 3) * day;
     const { lastInsertRowid: id } = db.prepare(
-      'INSERT INTO users (email, password_hash, display_name, role, verified, coc_accepted_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).run(email, hash, name, role, verified, created, created);
+      'INSERT INTO users (email, password_hash, display_name, role, verified, email_verified_at, coc_accepted_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(email, hash, name, role, verified, created, created, created);
     ids.push(Number(id));
     db.prepare(
       `INSERT INTO profiles (user_id, member_type, headline, bio, city, country, seeking, looking_for, updated_at)

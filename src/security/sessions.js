@@ -9,7 +9,7 @@ export function sessionMiddleware(db, config) {
   const name = cookieName('mc_sid', config.secure);
   const lookup = db.prepare(
     `SELECT s.id AS session_id, s.expires_at, u.id, u.email, u.display_name, u.role, u.status, u.verified,
-            u.totp_secret IS NOT NULL AS has_2fa
+            u.email_verified_at, u.totp_secret IS NOT NULL AS has_2fa
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.id = ?`,
   );
@@ -20,7 +20,7 @@ export function sessionMiddleware(db, config) {
     const token = req.cookies[name];
     if (token) {
       const row = lookup.get(sha256(token));
-      if (row && row.expires_at > Date.now() && row.status === 'active') {
+      if (row && row.expires_at > Date.now() && row.status === 'active' && row.email_verified_at) {
         req.sessionId = row.session_id;
         req.user = {
           id: row.id,

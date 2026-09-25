@@ -1,15 +1,35 @@
 import { createApp, loadConfig } from '../src/app.js';
 import { openDb } from '../src/db.js';
+import { memoryMailer } from '../src/mailer.js';
+
+export const APP_URL = 'https://community.test';
+let mailer;
+
+// Most recent email sent to an address.
+export function lastEmail(to) {
+  return mailer.outbox.filter((m) => m.to === to).at(-1);
+}
+
+export function linkIn(email, path) {
+  const m = email?.text.match(new RegExp(`${APP_URL}${path}\\?token=([A-Za-z0-9_-]+)`));
+  return m && m[1];
+}
 
 export async function startApp() {
-  const config = { ...loadConfig({ NODE_ENV: 'test' }), dbPath: ':memory:', trustProxy: 'loopback' };
+  mailer = memoryMailer();
+  const config = {
+    ...loadConfig({ NODE_ENV: 'test', APP_URL }),
+    dbPath: ':memory:',
+    trustProxy: 'loopback',
+    mailer,
+  };
   const db = openDb(':memory:');
   const app = createApp(config, db);
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
   });
   const base = `http://127.0.0.1:${server.address().port}`;
-  return { app, db, config, base, close: () => new Promise((r) => server.close(r)) };
+  return { app, db, config, base, mailer, close: () => new Promise((r) => server.close(r)) };
 }
 
 const rand = () => Math.floor(Math.random() * 254) + 1;
@@ -49,7 +69,7 @@ export class Client {
   }
 
   async post(path, fields = {}, { csrf = true, headers = {} } = {}) {
-    if (csrf && !this.csrf) await this.get('/');
+    if (csrf && !this.csrf) await this.get('/login');
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(fields)) {
       for (const item of Array.isArray(v) ? v : [v]) params.append(k, item);
@@ -66,9 +86,10 @@ export class Client {
     return { status: res.status, body, location: res.headers.get('location'), headers: res.headers };
   }
 
-  async signup(overrides = {}) {
+  // Signs up without activating. Returns the signup response and the email used.
+  async register(overrides = {}) {
     await this.get('/signup');
-    const res = await this.post('/signup', {
+    const fields = {
       display_name: 'Test Person',
       email: `user${Math.random().toString(36).slice(2)}@example.com`,
       password: 'correct horse battery staple',
@@ -77,7 +98,17 @@ export class Client {
       country: 'Australia',
       accept_coc: 'yes',
       ...overrides,
-    });
+    };
+    const res = await this.post('/signup', fields);
+    return { res, email: fields.email };
+  }
+
+  // Signs up and clicks the activation link. Returns the activation response.
+  async signup(overrides = {}) {
+    const { email } = await this.register(overrides);
+    const token = linkIn(lastEmail(email), '/verify');
+    await this.get(`/verify?token=${token}`);
+    const res = await this.post('/verify', { token });
     await this.get('/'); // refresh CSRF token after rotation
     return res;
   }

@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
+import { createMailer } from './mailer.js';
 import { parseCookies, setCookie, clearCookie } from './security/cookies.js';
 import { sessionMiddleware } from './security/sessions.js';
 import { csrfMiddleware } from './security/csrf.js';
@@ -36,13 +37,26 @@ export function loadConfig(env = process.env) {
     trustProxy: env.TRUST_PROXY ?? (production ? '1' : 'false'),
     // Demo deployments show a banner and are auto-seeded with sample data.
     demo: env.DEMO_MODE === 'true',
+    appUrl: appUrl(env, production),
+    mail: { resendApiKey: env.RESEND_API_KEY, from: env.MAIL_FROM },
   };
+}
+
+// The public base URL used in emailed links. It comes only from configuration —
+// never from the request's Host header, which an attacker controls (that would
+// let them send victims password-reset links pointing at their own server).
+function appUrl(env, production) {
+  const raw = env.APP_URL || (env.VERCEL_PROJECT_PRODUCTION_URL && `https://${env.VERCEL_PROJECT_PRODUCTION_URL}`);
+  if (raw) return raw.replace(/\/+$/, '');
+  if (production) throw new Error('APP_URL must be set in production (e.g. https://community.example.com).');
+  return `http://localhost:${env.PORT || 3000}`;
 }
 
 export function createApp(config = loadConfig(), db = openDb(config.dbPath)) {
   const app = express();
   app.locals.db = db;
   app.locals.config = config;
+  app.locals.mailer = config.mailer ?? createMailer(config);
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy === 'false' ? false : Number(config.trustProxy) || config.trustProxy);
 
@@ -70,7 +84,10 @@ export function createApp(config = loadConfig(), db = openDb(config.dbPath)) {
       crossOriginEmbedderPolicy: false,
     }),
   );
+  // Private community: ask search engines not to index anything.
+  app.get('/robots.txt', (req, res) => res.type('text').send('User-agent: *\nDisallow: /\n'));
   app.use((req, res, next) => {
+    res.set('X-Robots-Tag', 'noindex, nofollow');
     res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
     next();
   });

@@ -1,10 +1,11 @@
 import { html } from './html.js';
 import { memberTypeLabel } from '../taxonomy.js';
+import { BRAND } from '../brand.js';
 
 // Flash messages are looked up from this fixed table by key, so nothing a user
 // controls is ever reflected back through a flash.
 export const FLASH = {
-  welcome: 'Welcome to the community! Finish your profile so the right people can find you.',
+  welcome: 'Your account is active — welcome aboard! Finish your profile so the right people can find you.',
   'signed-in': 'Signed in.',
   'signed-out': 'You have been signed out.',
   'profile-saved': 'Profile saved.',
@@ -21,6 +22,7 @@ export const FLASH = {
   'comment-added': 'Comment added.',
   reported: 'Thanks — a moderator will review your report. Reports are confidential.',
   'password-changed': 'Password changed. All other sessions were signed out.',
+  'password-reset': 'Your password has been reset. Sign in with your new password.',
   'sessions-revoked': 'All other sessions were signed out.',
   '2fa-enabled': 'Two-factor authentication is on.',
   '2fa-disabled': 'Two-factor authentication is off.',
@@ -74,12 +76,15 @@ export function layout(req, { title, body, wide = false }) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<title>${title ? `${title} · ` : ''}Moonshots Community</title>
+<title>${title ? `${title} · ` : ''}${BRAND.name}</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#06070d">
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="/">🚀 <span>Moonshots</span> Community</a>
+  <a class="brand" href="/"><img src="/static/logo.svg" alt=""><span>${BRAND.shortName}</span><em>Community</em></a>
   <nav>
     ${u
       ? html`<a href="/hubs">Hubs</a><a href="/members">Members</a><a href="/connections">Connections</a>
@@ -102,8 +107,9 @@ ${req.app.locals.config?.demo
   ${body}
 </main>
 <footer class="footer">
-  <p>An MVP community concept for the <a href="https://moonshots.com/" rel="noopener noreferrer">Moonshots</a> audience ·
-  <a href="/code-of-conduct">Code of conduct</a> · Never share passwords or send money to someone you met here without due diligence.</p>
+  <p>A private, members-only community for the <a href="${BRAND.parentUrl}" rel="noopener noreferrer">Moonshots</a> audience ·
+  <a href="/code-of-conduct">Code of conduct</a>${BRAND.supportEmail ? html` · <a href="mailto:${BRAND.supportEmail}">Contact</a>` : ''}</p>
+  <p class="small">Never share passwords, or send money to someone you met here without doing your own due diligence.</p>
 </footer>
 </body>
 </html>`;

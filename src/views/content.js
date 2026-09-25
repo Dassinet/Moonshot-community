@@ -2,32 +2,34 @@ import { html } from './html.js';
 import { MEMBER_TYPES } from '../taxonomy.js';
 
 export function landing() {
-  return html`<section class="hero">
-    <h1>Find your moonshot people.</h1>
-    <p class="lead">A trusted community for the Moonshots audience — connecting founders, investors, builders, researchers
-      and mentors by <strong>where they are</strong> and <strong>what they're working on</strong>.</p>
-    <p><a class="btn" href="/signup">Join the community</a> <a class="btn ghost" href="/login">Sign in</a></p>
+  return html`<section class="hero center">
+    <p class="eyebrow">Private · Members-only community</p>
+    <h1>Where moonshot thinkers<br><span class="glow">find each other.</span></h1>
+    <p class="lead">A members-only network for the Moonshots audience, connecting founders, investors, builders,
+      researchers and mentors by <strong>where they are</strong> and <strong>what they're building</strong>.</p>
+    <div class="hero-actions"><a class="btn" href="/signup">Join the community</a> <a class="btn ghost" href="/login">Member sign in</a></div>
+    <div class="pill-row"><span>🤖 AI</span><span>🧬 Longevity</span><span>🛰️ Space</span><span>⚡ Energy</span><span>🌍 Climate</span><span>🦾 Robotics</span><span>+ more</span></div>
   </section>
   <section class="grid three">
-    <article class="card"><h2>📍 Local hubs</h2><p>City chapters from the Bay Area to Sydney. Meet people nearby, organise meetups and
-      share what's happening in your ecosystem.</p></article>
-    <article class="card"><h2>🧭 Interest circles</h2><p>AI, longevity, space, energy, biotech, robotics and more. Go deep with the people
-      building the future of each field.</p></article>
-    <article class="card"><h2>🤝 Warm connections</h2><p>Smart suggestions match founders with investors, builders with founders and
-      mentors with those starting out — every intro starts with a personal note.</p></article>
+    <article class="card feature"><span class="icon">📍</span><h2>Local hubs</h2><p>City chapters from the Bay Area to Sydney. Meet the
+      people building the future near you, and turn online conversations into meetups.</p></article>
+    <article class="card feature"><span class="icon">🧭</span><h2>Interest circles</h2><p>Go deep on AI, longevity, space, energy, biotech,
+      robotics and more, with people who are actually working on them.</p></article>
+    <article class="card feature"><span class="icon">🤝</span><h2>Warm introductions</h2><p>Smart matching pairs founders with investors,
+      builders with founders and mentors with rising talent. Every intro starts with a personal note.</p></article>
   </section>
   <section class="card">
     <h2>Built for everyone in the ecosystem</h2>
     <div class="badges">${MEMBER_TYPES.map((t) => html`<span class="badge type-${t.key}">${t.label}</span>`)}</div>
   </section>
   <section class="card">
-    <h2>Safe by design</h2>
+    <h2>Private and safe by design</h2>
     <ul class="ticks">
+      <li>Members only: every account is activated by email, and nothing is visible to the public or search engines.</li>
       <li>Your email is never shown. Location is city-level only.</li>
-      <li>Messages only open once both people accept a connection — no cold inbox spam.</li>
-      <li>Rate limits on connection requests protect investors and high-profile members.</li>
-      <li>Verified badges for identity-checked members, plus one-click block and report.</li>
-      <li>Optional two-factor authentication and full account deletion at any time.</li>
+      <li>Messages only open once both people accept a connection, so there's no cold-inbox spam.</li>
+      <li>Outreach limits protect investors and high-profile members.</li>
+      <li>Verified badges, one-click block and report, optional two-factor sign-in, and full account deletion.</li>
     </ul>
   </section>`;
 }

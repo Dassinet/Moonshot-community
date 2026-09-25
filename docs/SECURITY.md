@@ -14,6 +14,14 @@ and what must be done before a public launch.
 - Optional **TOTP two-factor auth** (RFC 6238, works with any authenticator app), with replay protection. The
   password step only issues a short-lived, HMAC-signed "pending" cookie; a session is created only after the code.
 - Re-authentication (current password) required to change password, disable 2FA or delete the account.
+- **Email activation** is mandatory: accounts can't sign in (and sessions aren't honoured) until the member confirms
+  their address. Activation and **password-reset** links are single-use, stored only as SHA-256 hashes, expire (24h /
+  1h), are throttled to 3 per account per hour, and are built only from the configured `APP_URL`, never the request's
+  Host header (prevents reset-link poisoning). Opening a link shows a confirm button; nothing changes on a GET, so
+  corporate link scanners can't consume or trigger them.
+- **No account enumeration**: signup, "resend activation" and "forgot password" respond identically whether or not
+  the email exists; the real owner of an already-registered address gets a heads-up email instead.
+- A successful reset revokes all sessions and clears lockouts; password changes and resets send an alert email.
 
 ### Sessions
 - 256-bit random tokens; only their **SHA-256 hash** is stored, so a database leak doesn't leak live sessions.
@@ -39,6 +47,8 @@ and what must be done before a public launch.
   members can message, only authors can delete their posts, only staff reach `/admin` (which returns 404 to others),
   moderators can't act on admins or promote themselves.
 - Blocked or suspended members are indistinguishable from non-existent ones (404).
+- **Private by default**: everything except the landing, sign-up, sign-in and code-of-conduct pages requires an
+  activated account; `robots.txt`, `X-Robots-Tag` and a robots meta tag keep the site out of search engines.
 - Request bodies limited to 20 KB / 100 fields; no file uploads in the MVP; request/header timeouts against slowloris.
 - Full **account deletion** cascades through all of a member's data.
 - Security-relevant events (logins, failures, lockouts, 2FA changes, blocks, moderation actions) go to an audit log.
@@ -59,7 +69,8 @@ the full 2FA flow (including tampering and replay), and RFC 6238 test vectors.
 
 - [ ] Run behind HTTPS (TLS-terminating proxy) with `NODE_ENV=production`, a strong `SESSION_SECRET`, and
       `TRUST_PROXY` set to your proxy hop count.
-- [ ] Add email verification and password reset (requires a transactional email provider).
+- [x] Email verification and password reset. Configure `RESEND_API_KEY`, `MAIL_FROM` and `APP_URL`, and verify
+      your sending domain (SPF/DKIM) so emails don't land in spam.
 - [ ] Move rate limiting to a shared store (Redis) if running more than one instance; add WAF/bot protection.
 - [ ] Encrypt TOTP secrets at rest (e.g. KMS envelope encryption) and add 2FA recovery codes.
 - [ ] Encrypted, tested database backups; retention policy for audit logs and messages.

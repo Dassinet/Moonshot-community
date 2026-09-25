@@ -3,7 +3,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { html } from '../views/html.js';
 import { csrfField, errorList } from '../views/layout.js';
 import { hashPassword, verifyPassword, burnPasswordCheck, passwordProblems, PASSWORD_MIN } from '../security/passwords.js';
-import { startSession, endSession } from '../security/sessions.js';
+import { startSession, endSession, endAllSessions } from '../security/sessions.js';
+import { issueToken, peekToken, consumeToken, canIssue } from '../security/tokens.js';
+import { activationEmail, alreadyRegisteredEmail, resetEmail, passwordChangedEmail } from '../views/emails.js';
 import { RateLimiter, limit } from '../security/rateLimit.js';
 import { setCookie, clearCookie, cookieName } from '../security/cookies.js';
 import { verifyCode } from '../security/totp.js';
@@ -79,32 +81,206 @@ router.post('/signup', limit(signupLimiter, (req) => `signup:${req.ip}`), async 
   if (req.body.accept_coc !== 'yes') errors.push('You need to accept the code of conduct to join.');
   errors.push(...passwordProblems(password, { email: values.email, name: values.display_name }));
 
-  if (!errors.length && db.prepare('SELECT 1 FROM users WHERE email = ?').get(values.email)) {
-    errors.push("We couldn't create an account with that email. If you already have one, sign in instead.");
-  }
   if (errors.length) return res.status(400).page(signupPage(req, { values: { ...values, email: req.body.email }, errors }));
 
-  const now = Date.now();
+  // Hash before checking for an existing account so both paths take the same
+  // time, and respond identically either way — the signup form must not reveal
+  // who is a member. The owner of an existing account gets a heads-up email.
   const hash = await hashPassword(password);
-  const { lastInsertRowid: userId } = db
-    .prepare('INSERT INTO users (email, password_hash, display_name, coc_accepted_at, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(values.email, hash, values.display_name, now, now);
-  db.prepare('INSERT INTO profiles (user_id, member_type, city, country, updated_at) VALUES (?, ?, ?, ?, ?)').run(
-    userId,
-    values.member_type,
-    values.city,
-    values.country,
-    now,
-  );
-  db.prepare(
-    "INSERT OR IGNORE INTO hub_members (hub_id, user_id, joined_at) SELECT id, ?, ? FROM hubs WHERE slug = 'global-online'",
-  ).run(userId, now);
-  audit(db, userId, 'user.signup', `user:${userId}`);
+  const existing = db.prepare('SELECT id, display_name FROM users WHERE email = ?').get(values.email);
+  const { mailer } = req.app.locals;
+  try {
+    if (existing) {
+      await mailer.send({
+        to: values.email,
+        ...alreadyRegisteredEmail({ name: existing.display_name, loginUrl: `${config.appUrl}/login`, resetUrl: `${config.appUrl}/forgot` }),
+      });
+    } else {
+      const now = Date.now();
+      const { lastInsertRowid } = db
+        .prepare('INSERT INTO users (email, password_hash, display_name, coc_accepted_at, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(values.email, hash, values.display_name, now, now);
+      const userId = Number(lastInsertRowid);
+      db.prepare('INSERT INTO profiles (user_id, member_type, city, country, updated_at) VALUES (?, ?, ?, ?, ?)').run(
+        userId, values.member_type, values.city, values.country, now,
+      );
+      db.prepare(
+        "INSERT OR IGNORE INTO hub_members (hub_id, user_id, joined_at) SELECT id, ?, ? FROM hubs WHERE slug = 'global-online'",
+      ).run(userId, now);
+      audit(db, userId, 'user.signup', `user:${userId}`);
+      await sendActivation(req, { id: userId, display_name: values.display_name, email: values.email });
+    }
+  } catch (err) {
+    console.error('signup email failed:', err.message);
+    return res.status(503).page(signupPage(req, {
+      values: { ...values, email: req.body.email },
+      errors: ["We couldn't send your activation email just now. Please try again in a few minutes."],
+    }));
+  }
+  res.redirect(303, '/signup/check-email');
+});
 
+async function sendActivation(req, user) {
+  const { db, config, mailer } = req.app.locals;
+  const token = issueToken(db, user.id, 'verify');
+  await mailer.send({ to: user.email, ...activationEmail({ name: user.display_name, url: `${config.appUrl}/verify?token=${token}` }) });
+}
+
+function checkEmailPage(title, message) {
+  return {
+    title,
+    body: html`<section class="narrow card center">
+      <div class="big-icon" aria-hidden="true">📬</div>
+      <h1>${title}</h1>
+      <p>${message}</p>
+      <p class="muted small">Can't find it? Check your spam folder, or <a href="/verify/resend">send a new activation link</a>.</p>
+    </section>`,
+  };
+}
+
+router.get('/signup/check-email', (req, res) => {
+  res.page(checkEmailPage('Check your email', "If that address can be used, we've sent it a link to activate your account. The link expires in 24 hours."));
+});
+
+// --- Email activation -------------------------------------------------------
+// Opening the link shows a confirm button rather than activating immediately:
+// corporate email scanners pre-fetch links, and a GET must never change state.
+
+function badLinkPage(req, what) {
+  return {
+    title: 'Link expired',
+    body: html`<section class="narrow card center">
+      <h1>This link has expired or was already used</h1>
+      <p class="muted">For your security, ${what} links only work once and expire after a while.</p>
+      <p><a class="btn" href="${what === 'activation' ? '/verify/resend' : '/forgot'}">Get a new link</a></p>
+    </section>`,
+  };
+}
+
+router.get('/verify', (req, res) => {
+  const { db } = req.app.locals;
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  if (!peekToken(db, token, 'verify')) return res.status(400).page(badLinkPage(req, 'activation'));
+  res.page({
+    title: 'Activate your account',
+    body: html`<section class="narrow card center">
+      <div class="big-icon" aria-hidden="true">🚀</div>
+      <h1>One last step</h1>
+      <p>Confirm your email address to activate your account.</p>
+      <form method="post" action="/verify">${csrfField(req)}<input type="hidden" name="token" value="${token}">
+        <button class="btn">Activate my account</button></form>
+    </section>`,
+  });
+});
+
+router.post('/verify', (req, res) => {
+  const { db, config } = req.app.locals;
+  const userId = consumeToken(db, req.body.token, 'verify');
+  if (!userId) return res.status(400).page(badLinkPage(req, 'activation'));
+  const user = db.prepare('SELECT id, status, email_verified_at FROM users WHERE id = ?').get(userId);
+  if (!user || user.status !== 'active') return res.redirect(303, '/login');
+  if (!user.email_verified_at) db.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?').run(Date.now(), userId);
+  audit(db, userId, 'user.email_verified', `user:${userId}`);
+  endSession(db, config, req, res);
   req.rotateCsrf();
-  startSession(db, config, res, Number(userId));
+  startSession(db, config, res, userId);
   res.flash('welcome');
   res.redirect(303, '/profile/edit');
+});
+
+function emailFormPage(req, { title, intro, action, button }) {
+  return {
+    title,
+    body: html`<section class="narrow card">
+      <h1>${title}</h1>
+      <p class="muted">${intro}</p>
+      <form method="post" action="${action}" class="stack">${csrfField(req)}
+        <label>Email <input type="email" name="email" required autocomplete="email"></label>
+        <button class="btn">${button}</button></form>
+    </section>`,
+  };
+}
+
+const emailLimiter = new RateLimiter({ windowMs: 60 * 60 * 1000, max: 10 });
+
+router.get('/verify/resend', (req, res) =>
+  res.page(emailFormPage(req, { title: 'Resend activation link', intro: "Enter the email you signed up with and we'll send a fresh activation link.", action: '/verify/resend', button: 'Send link' })),
+);
+
+router.post('/verify/resend', limit(emailLimiter, (req) => `email:${req.ip}`), async (req, res) => {
+  const { db } = req.app.locals;
+  const email = v.email(req.body.email);
+  const user = email && db.prepare("SELECT id, email, display_name FROM users WHERE email = ? AND status = 'active' AND email_verified_at IS NULL").get(email);
+  if (user && canIssue(db, user.id, 'verify')) {
+    await sendActivation(req, user).catch((err) => console.error('resend email failed:', err.message));
+  }
+  res.page(checkEmailPage('Check your email', "If there's an account waiting to be activated for that address, we've sent a new link."));
+});
+
+// --- Password reset ---------------------------------------------------------
+
+router.get('/forgot', (req, res) =>
+  res.page(emailFormPage(req, { title: 'Reset your password', intro: "Enter your account email and we'll send you a link to choose a new password.", action: '/forgot', button: 'Send reset link' })),
+);
+
+router.post('/forgot', limit(emailLimiter, (req) => `email:${req.ip}`), async (req, res) => {
+  const { db, config, mailer } = req.app.locals;
+  const email = v.email(req.body.email);
+  const user = email && db.prepare("SELECT id, email, display_name FROM users WHERE email = ? AND status = 'active'").get(email);
+  if (user && canIssue(db, user.id, 'reset')) {
+    const token = issueToken(db, user.id, 'reset');
+    await mailer
+      .send({ to: user.email, ...resetEmail({ name: user.display_name, url: `${config.appUrl}/reset?token=${token}` }) })
+      .catch((err) => console.error('reset email failed:', err.message));
+    audit(db, null, 'auth.reset_requested', `user:${user.id}`);
+  }
+  res.page(checkEmailPage('Check your email', "If there's an account for that address, we've sent it a link to reset your password. It expires in 1 hour."));
+});
+
+function resetPage(req, token, errors = []) {
+  return {
+    title: 'Choose a new password',
+    body: html`<section class="narrow card">
+      <h1>Choose a new password</h1>
+      ${errorList(errors)}
+      <form method="post" action="/reset" class="stack">${csrfField(req)}
+        <input type="hidden" name="token" value="${token}">
+        <label>New password <input type="password" name="password" required minlength="${PASSWORD_MIN}" maxlength="200" autocomplete="new-password">
+          <small>At least ${PASSWORD_MIN} characters.</small></label>
+        <button class="btn">Save new password</button></form>
+    </section>`,
+  };
+}
+
+router.get('/reset', (req, res) => {
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  if (!peekToken(req.app.locals.db, token, 'reset')) return res.status(400).page(badLinkPage(req, 'password reset'));
+  res.page(resetPage(req, token));
+});
+
+router.post('/reset', limit(emailLimiter, (req) => `reset:${req.ip}`), async (req, res) => {
+  const { db, config, mailer } = req.app.locals;
+  const token = typeof req.body.token === 'string' ? req.body.token : '';
+  const userId = peekToken(db, token, 'reset');
+  if (!userId) return res.status(400).page(badLinkPage(req, 'password reset'));
+  const user = db.prepare('SELECT id, email, display_name FROM users WHERE id = ?').get(userId);
+  const problems = passwordProblems(req.body.password, { email: user.email, name: user.display_name });
+  if (problems.length) return res.status(400).page(resetPage(req, token, problems));
+  if (consumeToken(db, token, 'reset') !== userId) return res.status(400).page(badLinkPage(req, 'password reset'));
+
+  const now = Date.now();
+  // A working reset link also proves the member owns the address.
+  db.prepare(
+    'UPDATE users SET password_hash = ?, failed_logins = 0, locked_until = 0, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?',
+  ).run(await hashPassword(req.body.password), now, userId);
+  endAllSessions(db, userId);
+  audit(db, userId, 'auth.password_reset', `user:${userId}`);
+  await mailer
+    .send({ to: user.email, ...passwordChangedEmail({ name: user.display_name, resetUrl: `${config.appUrl}/forgot` }) })
+    .catch((err) => console.error('notice email failed:', err.message));
+  req.rotateCsrf();
+  res.flash('password-reset');
+  res.redirect(303, '/login');
 });
 
 function loginPage(req, { email = '', error } = {}) {
@@ -119,7 +295,7 @@ function loginPage(req, { email = '', error } = {}) {
         <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
         <button class="btn">Sign in</button>
       </form>
-      <p class="muted">New here? <a href="/signup">Create an account</a></p>
+      <p class="muted"><a href="/forgot">Forgot your password?</a> · New here? <a href="/signup">Create an account</a></p>
     </section>`,
   };
 }
@@ -163,6 +339,15 @@ router.post('/login', limit(loginLimiter, (req) => `login:${req.ip}`), async (re
     );
   }
   db.prepare('UPDATE users SET failed_logins = 0, locked_until = 0 WHERE id = ?').run(user.id);
+
+  // Only revealed after a correct password, so it doesn't leak who has signed up.
+  if (!user.email_verified_at) {
+    if (canIssue(db, user.id, 'verify')) {
+      await sendActivation(req, user).catch((err) => console.error('activation email failed:', err.message));
+    }
+    return res.status(403).page(checkEmailPage('Activate your account first',
+      "Your account isn't activated yet. We've sent a fresh activation link to your email — click it to finish joining."));
+  }
 
   if (user.totp_secret) {
     setPending2fa(res, config, user.id);
