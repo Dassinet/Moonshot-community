@@ -150,6 +150,31 @@ CREATE TABLE IF NOT EXISTS email_tokens (
 );
 CREATE INDEX IF NOT EXISTS email_tokens_user ON email_tokens(user_id, purpose, created_at);
 
+CREATE TABLE IF NOT EXISTS events (
+  id          INTEGER PRIMARY KEY,
+  hub_id      INTEGER NOT NULL REFERENCES hubs(id) ON DELETE CASCADE,
+  host_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  starts_at   INTEGER NOT NULL,          -- UTC milliseconds
+  ends_at     INTEGER NOT NULL,
+  timezone    TEXT NOT NULL,             -- IANA zone the times are shown in
+  venue       TEXT NOT NULL DEFAULT '',  -- in-person address, if any
+  online_url  TEXT NOT NULL DEFAULT '',  -- only shown to people who are going
+  capacity    INTEGER,
+  cancelled   INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS events_start ON events(starts_at);
+
+CREATE TABLE IF NOT EXISTS event_rsvps (
+  event_id   INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status     TEXT NOT NULL CHECK (status IN ('going','interested')),
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (event_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id         INTEGER PRIMARY KEY,
   actor_id   INTEGER,

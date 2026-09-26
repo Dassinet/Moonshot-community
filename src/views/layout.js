@@ -30,6 +30,11 @@ export const FLASH = {
   'report-resolved': 'Report resolved.',
   'user-updated': 'Member updated.',
   'hub-created': 'Hub created.',
+  'event-created': "Your event is live. You're down as going.",
+  'event-cancelled': 'Event cancelled.',
+  'event-full': 'Sorry — that event just filled up.',
+  'rsvp-going': "You're going! Add it to your calendar below.",
+  'rsvp-updated': 'RSVP updated.',
 };
 
 export function csrfField(req) {
@@ -74,12 +79,19 @@ export function layout(req, { title, body, wide = false }) {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>${title ? `${title} · ` : ''}${BRAND.name}</title>
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="${BRAND.shortName}">
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -87,7 +99,7 @@ export function layout(req, { title, body, wide = false }) {
   <a class="brand" href="/" aria-label="${BRAND.name} home"><span>${BRAND.shortName}</span><span class="slash" aria-hidden="true">/</span><span class="sub">Community</span></a>
   <nav>
     ${u
-      ? html`<a href="/hubs">Hubs</a><a href="/members">Members</a><a href="/connections">Connections</a>
+      ? html`<a href="/hubs">Hubs</a><a href="/events">Events</a><a href="/members">Members</a><a href="/connections">Connections</a>
         <a href="/messages">Messages${req.unread ? html` <span class="count">${req.unread}</span>` : ''}</a>
         ${staff ? html`<a href="/admin">Moderation</a>` : ''}
         <details class="menu"><summary>${avatar(u.displayName, 'sm')}</summary>

@@ -24,7 +24,7 @@ Network → Firewall). Office or guest Wi-Fi networks often block device-to-devi
 
 ## Option 2 — Vercel (a link you can share)
 
-On Vercel the app runs as a **demo**: it starts with 12 sample members, posts and connections. Visitors don't sign up
+On Vercel the app runs as a **demo**: it starts with 51 sample members across 15 cities, plus posts, events and connections. Visitors don't sign up
 or log in. They tap **Explore the demo** and pick a member to explore as (a founder, an investor, a moderator…).
 **No email service, keys or other setup is needed.**
 
@@ -36,6 +36,7 @@ or log in. They tap **Explore the demo** and pick a member to explore as (a foun
    | `SITE_PASSWORD` | Makes the site **private**. Visitors see only a plain, unbranded "Private preview" page until they enter this password (remembered for 30 days on that device). Leave it out for a public site. |
    | `SESSION_SECRET` | 64 random characters (e.g. `openssl rand -hex 32`). Recommended: keeps visitors signed in when Vercel restarts. |
 3. **Deploy**, then open the `https://….vercel.app` link on your phone.
+4. To install it like an app: on iPhone tap **Share → Add to Home Screen**; on Android tap **⋮ → Install app**.
 
 To switch between public and private later: Vercel → project → **Settings → Environment Variables**, add, change or
 remove `SITE_PASSWORD`, then **Deployments → Redeploy**. Changing the password locks out everyone who used the old one.

@@ -36,7 +36,9 @@ Members also choose who they **want to meet** (e.g. a founder seeking investors 
 | Profiles | Headline, bio, interests, "looking for", who I want to meet, link, verified badge |
 | Discovery | Member directory filtered by role, interest, city/country and keyword |
 | Matching | Explainable suggestions ("Both into Energy", "Also in Sydney", "Matches who you are looking for") |
-| Hubs | 15 local hubs + 15 interest circles; join/leave; posts typed as Discussion / Ask / Offer / Event; comments |
+| Hubs | 15 local hubs + 15 interest circles; join/leave; posts typed as Discussion / Ask / Offer; comments |
+| Events | Host meetups and online sessions in a hub; RSVP going/interested; capacity; attendee list; per-event time zone; add to calendar; online links only for attendees |
+| Mobile | Installable to the home screen (manifest, icons, full-screen mode) |
 | Connections | Request with a mandatory personal note → accept/decline; declines are silent |
 | Messaging | 1:1 messages, only between accepted connections |
 | Safety | Block, report (profiles, posts, comments, messages), moderation queue, suspend, hide content, verify identity |
@@ -77,7 +79,7 @@ Members also choose who they **want to meet** (e.g. a founder seeking investors 
 
 **Phase 2 — growth & engagement**
 - Email verification, password reset, and email/push notifications (digests of new requests, hub activity).
-- Events with RSVPs, capacity and calendar invites; hub organisers (community leaders per city).
+- Event reminders and notifications; hub organisers (community leaders per city); recurring events.
 - Sign in with LinkedIn / Google, and LinkedIn-assisted verification.
 - Image avatars (with upload scanning), rich text posts.
 

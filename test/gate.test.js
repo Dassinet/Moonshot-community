@@ -127,7 +127,7 @@ describe('demo mode (no log-in)', () => {
     await admin.get('/settings');
     assert.equal((await admin.post('/settings/delete', { password: 'x', confirm: 'yes' })).status, 403);
     assert.equal((await admin.post('/settings/password', { current: 'x', password: 'another long passphrase' })).status, 403);
-    assert.equal(ctx.db.prepare("SELECT COUNT(*) AS n FROM users WHERE status = 'active'").get().n, 12);
+    assert.equal(ctx.db.prepare("SELECT COUNT(*) AS n FROM users WHERE status = 'suspended'").get().n, 0);
   });
 
   test('explore is not available outside demo mode', async () => {

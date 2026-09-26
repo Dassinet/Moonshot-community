@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { openDb } from './db.js';
 import { createMailer } from './mailer.js';
+import { BRAND } from './brand.js';
 import { parseCookies, setCookie, clearCookie } from './security/cookies.js';
 import { sessionMiddleware } from './security/sessions.js';
 import { csrfMiddleware } from './security/csrf.js';
@@ -19,6 +20,7 @@ import memberRoutes from './routes/members.js';
 import connectionRoutes from './routes/connections.js';
 import messageRoutes from './routes/messages.js';
 import hubRoutes from './routes/hubs.js';
+import eventRoutes from './routes/events.js';
 import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
 import adminRoutes from './routes/admin.js';
@@ -132,6 +134,31 @@ export function createApp(config = loadConfig(), db = openDb(config.dbPath)) {
   app.use(csrfMiddleware(config));
   app.use(gateMiddleware(config));
   app.use(gateRoutes);
+
+  // Web app manifest for "Add to Home Screen". Served after the private gate
+  // (the page links it with crossorigin="use-credentials" so the pass cookie
+  // is sent), so the app name isn't exposed to people without access.
+  app.get('/manifest.webmanifest', (req, res) => {
+    res.type('application/manifest+json').set('Cache-Control', 'no-cache').send(
+      JSON.stringify({
+        name: BRAND.name,
+        short_name: BRAND.shortName,
+        description: BRAND.tagline,
+        id: '/',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        orientation: 'portrait',
+        background_color: '#000000',
+        theme_color: '#000000',
+        icons: [
+          { src: '/static/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/static/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/static/icons/maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
+      }),
+    );
+  });
   app.use(exploreRoutes);
 
   const unread = db.prepare(
@@ -151,6 +178,7 @@ export function createApp(config = loadConfig(), db = openDb(config.dbPath)) {
   app.use(connectionRoutes);
   app.use(messageRoutes);
   app.use(hubRoutes);
+  app.use(eventRoutes);
   app.use(reportRoutes);
   app.use(settingsRoutes);
   app.use(adminRoutes);

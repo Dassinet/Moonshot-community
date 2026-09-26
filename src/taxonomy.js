@@ -75,7 +75,6 @@ export const POST_KINDS = [
   { key: 'discussion', label: 'Discussion' },
   { key: 'ask', label: 'Ask (I need…)' },
   { key: 'offer', label: 'Offer (I can help with…)' },
-  { key: 'event', label: 'Event / Meetup' },
 ];
 export const POST_KIND_KEYS = POST_KINDS.map((k) => k.key);
 
@@ -88,3 +87,44 @@ export const REPORT_REASONS = [
   { key: 'other', label: 'Something else' },
 ];
 export const REPORT_REASON_KEYS = REPORT_REASONS.map((r) => r.key);
+
+// Timezones events can be scheduled in (IANA names), with friendly labels.
+export const TIMEZONES = [
+  ['America/Los_Angeles', 'Los Angeles / San Francisco (Pacific)'],
+  ['America/Chicago', 'Austin (Central)'],
+  ['America/New_York', 'New York (Eastern)'],
+  ['America/Toronto', 'Toronto (Eastern)'],
+  ['America/Sao_Paulo', 'São Paulo'],
+  ['Europe/London', 'London'],
+  ['Europe/Berlin', 'Berlin / Central Europe'],
+  ['Africa/Lagos', 'Lagos'],
+  ['Asia/Dubai', 'Dubai'],
+  ['Asia/Kolkata', 'India'],
+  ['Asia/Singapore', 'Singapore'],
+  ['Australia/Perth', 'Perth'],
+  ['Australia/Brisbane', 'Brisbane'],
+  ['Australia/Sydney', 'Sydney / Canberra'],
+  ['Australia/Melbourne', 'Melbourne'],
+  ['Pacific/Auckland', 'Auckland'],
+  ['UTC', 'UTC (online / global)'],
+];
+export const TIMEZONE_KEYS = TIMEZONES.map(([k]) => k);
+
+// Default event timezone for each local hub.
+export const HUB_TIMEZONES = {
+  'global-online': 'UTC',
+  'sf-bay-area': 'America/Los_Angeles',
+  'los-angeles': 'America/Los_Angeles',
+  'new-york': 'America/New_York',
+  austin: 'America/Chicago',
+  toronto: 'America/Toronto',
+  london: 'Europe/London',
+  berlin: 'Europe/Berlin',
+  dubai: 'Asia/Dubai',
+  bangalore: 'Asia/Kolkata',
+  singapore: 'Asia/Singapore',
+  sydney: 'Australia/Sydney',
+  melbourne: 'Australia/Melbourne',
+  'sao-paulo': 'America/Sao_Paulo',
+  lagos: 'Africa/Lagos',
+};

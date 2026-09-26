@@ -13,7 +13,9 @@ investors, builders, researchers, mentors, operators, corporate partners, policy
 - **Profiles** with role, city, interests, "looking for" and who you want to meet; privacy controls.
 - **Member directory** filtered by role, interest, location and keyword.
 - **Explainable suggestions**: founders ↔ investors, builders ↔ founders, mentors ↔ students, same city, shared interests.
-- **Hubs**: 15 local hubs and 15 interest circles with Discussion / Ask / Offer / Event posts and comments.
+- **Hubs**: 15 local hubs and 15 interest circles with Discussion / Ask / Offer posts and comments.
+- **Events**: meetups, dinners and online sessions with RSVPs (going / interested), capacity limits, attendee lists, time zones, and add-to-calendar (.ics / Google). Online links are only shown to people who are going.
+- **Home-screen app**: installable on iPhone and Android (web app manifest + icons), opens full-screen.
 - **Connections** with a required personal note, and **messaging only between connections**.
 - **Safety**: block, report, moderation queue, suspend, hide content, verified badges, audit log.
 - **Public or private**: set `SITE_PASSWORD` to hide the whole site behind one shared password (on an unbranded page); leave it unset for a public site. Hidden from search engines either way.
@@ -27,7 +29,7 @@ Requires Node.js 22.13+ (uses the built-in `node:sqlite`; the only dependencies 
 
 ```bash
 npm install
-npm run seed      # optional: 12 demo members, posts and connections
+npm run seed      # optional: 51 demo members, 45 posts, 15 events, connections and messages
 npm run dev       # http://127.0.0.1:3000
 npm run dev:phone # same, plus a link to open on a phone on your Wi-Fi
 npm test
@@ -69,7 +71,9 @@ src/
   mailer.js         Optional email sending (Resend), otherwise logged
   gate.js           Optional shared-password private mode (SITE_PASSWORD)
   security/         Passwords, sessions, CSRF, rate limiting, TOTP, input validation
-  routes/           auth, home, profile, members, connections, messages, hubs, reports, settings, admin
+  routes/           auth, home, profile, members, connections, messages, hubs, events, explore, reports, settings, admin
+  demo.js / demoData.js  The fictional sample community
+  time.js           Time-zone handling for events
   views/            Auto-escaping HTML templates and layout
 public/styles.css   All styling (no client-side JavaScript); logo.svg and self-hosted fonts in public/
 api/index.js        Vercel entry point (demo mode) — see docs/DEPLOY.md

@@ -6,12 +6,13 @@ import { RateLimiter, limit } from '../security/rateLimit.js';
 import * as v from '../security/validate.js';
 import { audit } from '../db.js';
 import { POST_KINDS, POST_KIND_KEYS } from '../taxonomy.js';
+import { upcomingEvents, eventCard } from './events.js';
 
 const router = Router();
 const postLimiter = new RateLimiter({ windowMs: 60 * 60 * 1000, max: 10 });
 const commentLimiter = new RateLimiter({ windowMs: 60 * 60 * 1000, max: 60 });
 
-const kindLabel = (k) => POST_KINDS.find((p) => p.key === k)?.label.split(' (')[0] ?? 'Post';
+const kindLabel = (k) => POST_KINDS.find((p) => p.key === k)?.label.split(' (')[0] ?? (k === 'event' ? 'Event' : 'Post');
 
 // Excludes hidden content, suspended authors and anyone in a block relationship
 // with the viewer. Callers bind (viewerId, viewerId).
@@ -100,11 +101,16 @@ function hubPage(req, db, hub, { errors = [], values = {} } = {}) {
       <div class="dashboard">
         <div class="col-main">
           <nav class="tabs"><a class="${kind ? '' : 'active'}" href="/hubs/${hub.slug}">All</a>${POST_KINDS.map(
-            (k) => html`<a class="${kind === k.key ? 'active' : ''}" href="/hubs/${hub.slug}?kind=${k.key}">${k.key === 'event' ? 'Events' : `${kindLabel(k.key)}s`}</a>`,
+            (k) => html`<a class="${kind === k.key ? 'active' : ''}" href="/hubs/${hub.slug}?kind=${k.key}">${kindLabel(k.key)}s</a>`,
           )}</nav>
           ${posts.length ? posts.map((p) => postSummary(p)) : html`<div class="card empty">No posts yet — start the conversation.</div>`}
         </div>
         <aside class="col-side">
+          <div class="side-head"><h2>Upcoming events</h2>${hub.joined ? html`<a class="btn small ghost" href="/events/new?hub=${hub.slug}">+ Host</a>` : ''}</div>
+          ${(() => {
+            const events = upcomingEvents(db, uid, { hubId: hub.id, limit: 3 });
+            return events.length ? events.map(eventCard) : html`<div class="card empty small">No events planned yet.</div>`;
+          })()}
           ${hub.joined
             ? html`<form method="post" action="/hubs/${hub.slug}/posts" class="card stack">
                 <h2>New post</h2>

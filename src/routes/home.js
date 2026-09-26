@@ -4,6 +4,7 @@ import { memberCard } from '../views/layout.js';
 import { landing } from '../views/content.js';
 import { suggestConnections } from '../matching.js';
 import { postSummary } from './hubs.js';
+import { upcomingEvents, eventCard } from './events.js';
 
 const router = Router();
 
@@ -56,6 +57,15 @@ router.get('/', (req, res) => {
           ? html`<div class="card nudge"><strong>${incoming} connection request${incoming > 1 ? 's' : ''}</strong> waiting for you.
               <a class="btn small" href="/connections">Review</a></div>`
           : ''}
+        ${(() => {
+          const going = upcomingEvents(db, uid, { going: true, limit: 2 });
+          const nearby = upcomingEvents(db, uid, { mine: true, limit: 6 }).filter((e) => e.my_status !== 'going');
+          const events = [...going, ...nearby].slice(0, 3);
+          return events.length
+            ? html`<div class="side-head"><h2>Upcoming events</h2><a href="/events">All events →</a></div>
+                <div class="grid cards events">${events.map(eventCard)}</div>`
+            : '';
+        })()}
         <h2>From your hubs</h2>
         ${feed.length
           ? feed.map((p) => postSummary(p, { showHub: true }))
@@ -71,6 +81,12 @@ router.get('/', (req, res) => {
         <div class="card"><ul class="plain">${myHubs.map(
           (h) => html`<li><a href="/hubs/${h.slug}">${h.kind === 'region' ? '📍' : '🧭'} ${h.name}</a></li>`,
         )}</ul><a href="/hubs">Find more hubs →</a></div>
+        <div class="card install-hint">
+          <p class="eyebrow">Get the app</p>
+          <p class="small">Add this community to your home screen for one-tap access.</p>
+          <p class="small muted"><strong>iPhone:</strong> tap Share <span aria-hidden="true">⎋</span> then <em>Add to Home Screen</em>.<br>
+            <strong>Android:</strong> tap ⋮ then <em>Install app</em> or <em>Add to Home screen</em>.</p>
+        </div>
       </aside>
     </div>`,
   });
