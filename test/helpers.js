@@ -1,5 +1,26 @@
 import { createApp, loadConfig } from '../src/app.js';
 import { openDb } from '../src/db.js';
+
+// TEST_DB=turso runs every test through the Turso (libSQL) client instead of
+// node:sqlite, using an in-memory database — same client and code path as
+// production on Vercel, minus the network.
+export async function openTestDb() {
+  // TEST_DB=remote TEST_DB_URL=http://127.0.0.1:8089 runs against a real libSQL
+  // server over HTTP (the exact client used on Vercel). Tables are wiped first.
+  if (process.env.TEST_DB === 'remote') {
+    const { createClient } = await import('@libsql/client/web');
+    const client = createClient({ url: process.env.TEST_DB_URL });
+    const tables = (await client.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")).rows.map((r) => r.name);
+    // Outside a transaction, so the pragma takes effect for the drops.
+    if (tables.length) await client.executeMultiple(`PRAGMA foreign_keys = OFF; ${tables.map((t) => `DROP TABLE IF EXISTS "${t}";`).join(' ')} PRAGMA foreign_keys = ON;`);
+    return openDb({ client });
+  }
+  if (process.env.TEST_DB === 'turso') {
+    const { createClient } = await import('@libsql/client');
+    return openDb({ client: createClient({ url: ':memory:' }) });
+  }
+  return openDb(':memory:');
+}
 import { memoryMailer } from '../src/mailer.js';
 
 export const APP_URL = 'https://community.test';
@@ -26,7 +47,7 @@ export async function startApp({ sitePassword = '', email = true, demo = false }
     trustProxy: 'loopback',
     mailer,
   };
-  const db = openDb(':memory:');
+  const db = await openTestDb();
   const app = createApp(config, db);
   const server = await new Promise((resolve) => {
     const s = app.listen(0, '127.0.0.1', () => resolve(s));
@@ -121,6 +142,6 @@ export class Client {
   }
 }
 
-export function userId(db, name) {
-  return db.prepare('SELECT id FROM users WHERE display_name = ?').get(name).id;
+export async function userId(db, name) {
+  return (await db.get('SELECT id FROM users WHERE display_name = ?', name)).id;
 }

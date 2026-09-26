@@ -1,10 +1,18 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { INTERESTS, REGION_HUBS } from './taxonomy.js';
 
-// All queries in this codebase use prepared statements with bound parameters.
-// Never build SQL by concatenating user input.
+// Database layer with one async interface and two interchangeable backends:
+//
+//  - a local SQLite file (Node's built-in node:sqlite) for development, tests
+//    and hosts with a persistent disk;
+//  - Turso (hosted SQLite, https://turso.tech) when TURSO_DATABASE_URL is set,
+//    which is what makes data permanent on serverless hosts like Vercel.
+//
+// Both speak the same SQLite dialect, so schema and queries are identical.
+// All queries use bound parameters. Never build SQL by concatenating user input.
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -175,6 +183,11 @@ CREATE TABLE IF NOT EXISTS event_rsvps (
   PRIMARY KEY (event_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS app_settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id         INTEGER PRIMARY KEY,
   actor_id   INTEGER,
@@ -184,71 +197,169 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 `;
 
-export function openDb(path = ':memory:') {
-  if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
-  const db = new DatabaseSync(path);
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
-  db.exec(SCHEMA);
-  migrate(db);
-  seedTaxonomy(db);
+const toNumber = (v) => (typeof v === 'bigint' ? Number(v) : v);
+
+class SqliteBackend {
+  constructor(path) {
+    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
+    this.db = new DatabaseSync(path);
+    this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+    this.cache = new Map();
+  }
+  stmt(sql) {
+    let s = this.cache.get(sql);
+    if (!s) this.cache.set(sql, (s = this.db.prepare(sql)));
+    return s;
+  }
+  async get(sql, args) { return this.stmt(sql).get(...args); }
+  async all(sql, args) { return this.stmt(sql).all(...args); }
+  async run(sql, args) {
+    const r = this.stmt(sql).run(...args);
+    return { changes: toNumber(r.changes), lastInsertRowid: toNumber(r.lastInsertRowid) };
+  }
+  async exec(sql) { this.db.exec(sql); }
+  async batch(stmts) {
+    this.db.exec('BEGIN');
+    try {
+      const out = stmts.map(([sql, args = []]) => this.stmt(sql).run(...args));
+      this.db.exec('COMMIT');
+      return out.map((r) => ({ changes: toNumber(r.changes), lastInsertRowid: toNumber(r.lastInsertRowid) }));
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+  async close() { this.db.close(); }
+}
+
+// Turso / libSQL over HTTPS (works on serverless). Rows are converted to plain
+// objects so both backends return identical shapes.
+class LibsqlBackend {
+  constructor(client) { this.client = client; }
+  static rows(rs) { return rs.rows.map((row) => Object.fromEntries(rs.columns.map((c, i) => [c, toNumber(row[i])]))); }
+  async get(sql, args) { return LibsqlBackend.rows(await this.client.execute({ sql, args }))[0]; }
+  async all(sql, args) { return LibsqlBackend.rows(await this.client.execute({ sql, args })); }
+  async run(sql, args) {
+    const r = await this.client.execute({ sql, args });
+    return { changes: r.rowsAffected, lastInsertRowid: toNumber(r.lastInsertRowid) };
+  }
+  async exec(sql) { await this.client.executeMultiple(sql); }
+  async batch(stmts) {
+    const rs = await this.client.batch(stmts.map(([sql, args = []]) => ({ sql, args })), 'write');
+    return rs.map((r) => ({ changes: r.rowsAffected, lastInsertRowid: toNumber(r.lastInsertRowid) }));
+  }
+  async close() { this.client.close(); }
+}
+
+export class Database {
+  constructor(backend, kind) {
+    this.backend = backend;
+    this.kind = kind; // 'sqlite' | 'turso'
+  }
+  get persistent() { return this.kind === 'turso' || this.path !== ':memory:'; }
+  get(sql, ...args) { return this.backend.get(sql, args); }
+  all(sql, ...args) { return this.backend.all(sql, args); }
+  run(sql, ...args) { return this.backend.run(sql, args); }
+  exec(sql) { return this.backend.exec(sql); }
+  // Runs [sql, args] pairs atomically: all succeed or none do.
+  batch(stmts) { return this.backend.batch(stmts); }
+  close() { return this.backend.close(); }
+}
+
+// options: { path } for a local file, or { url, authToken } for Turso, or
+// { client } to pass a ready libSQL client (used by tests).
+export async function openDb(options = {}) {
+  const opts = typeof options === 'string' ? { path: options } : options;
+  let db;
+  if (opts.client) {
+    db = new Database(new LibsqlBackend(opts.client), 'turso');
+  } else if (opts.url) {
+    const { createClient } = await import('@libsql/client/web');
+    db = new Database(new LibsqlBackend(createClient({ url: opts.url, authToken: opts.authToken })), 'turso');
+  } else {
+    db = new Database(new SqliteBackend(opts.path ?? ':memory:'), 'sqlite');
+    db.path = opts.path ?? ':memory:';
+  }
+  await db.exec(SCHEMA);
+  await migrate(db);
+  await seedTaxonomy(db);
   return db;
 }
 
 // Upgrades databases created by earlier versions.
-function migrate(db) {
-  const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+async function migrate(db) {
+  const cols = (await db.all('PRAGMA table_info(users)')).map((c) => c.name);
   if (!cols.includes('email_verified_at')) {
-    db.exec('ALTER TABLE users ADD COLUMN email_verified_at INTEGER');
     // Accounts that existed before email activation are treated as activated.
-    db.exec('UPDATE users SET email_verified_at = created_at');
+    await db.batch([['ALTER TABLE users ADD COLUMN email_verified_at INTEGER'], ['UPDATE users SET email_verified_at = created_at']]);
   }
 }
 
-function seedTaxonomy(db) {
+async function seedTaxonomy(db) {
   const now = Date.now();
-  const addInterest = db.prepare('INSERT OR IGNORE INTO interests (slug, name) VALUES (?, ?)');
-  const addHub = db.prepare(
-    'INSERT OR IGNORE INTO hubs (slug, name, kind, description, interest_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-  );
-  const interestId = db.prepare('SELECT id FROM interests WHERE slug = ?');
+  const stmts = [];
   for (const [slug, name] of INTERESTS) {
-    addInterest.run(slug, name);
-    const { id } = interestId.get(slug);
-    addHub.run(`topic-${slug}`, name, 'interest', `Everyone working on or curious about ${name.toLowerCase()}.`, id, now);
+    stmts.push(['INSERT OR IGNORE INTO interests (slug, name) VALUES (?, ?)', [slug, name]]);
+    stmts.push([
+      `INSERT OR IGNORE INTO hubs (slug, name, kind, description, interest_id, created_at)
+       VALUES (?, ?, 'interest', ?, (SELECT id FROM interests WHERE slug = ?), ?)`,
+      [`topic-${slug}`, name, `Everyone working on or curious about ${name.toLowerCase()}.`, slug, now],
+    ]);
   }
   for (const [slug, name, description] of REGION_HUBS) {
-    addHub.run(slug, name, 'region', description, null, now);
+    stmts.push(["INSERT OR IGNORE INTO hubs (slug, name, kind, description, interest_id, created_at) VALUES (?, ?, 'region', ?, NULL, ?)", [slug, name, description, now]]);
   }
+  await db.batch(stmts);
+}
+
+// A random secret generated once and kept in the database, for deployments
+// that don't set SESSION_SECRET. Shared by every server instance.
+export async function storedSecret(db) {
+  await db.run("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('secret', ?)", randomBytes(32).toString('hex'));
+  return (await db.get("SELECT value FROM app_settings WHERE key = 'secret'")).value;
 }
 
 export function audit(db, actorId, action, target = '') {
-  db.prepare('INSERT INTO audit_log (actor_id, action, target, created_at) VALUES (?, ?, ?, ?)').run(
-    actorId ?? null,
-    action,
-    String(target),
-    Date.now(),
-  );
+  return db.run('INSERT INTO audit_log (actor_id, action, target, created_at) VALUES (?, ?, ?, ?)', actorId ?? null, action, String(target), Date.now());
 }
 
 // Is there a block in either direction between two users?
-export function isBlocked(db, a, b) {
-  return !!db
-    .prepare(
-      'SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)',
-    )
-    .get(a, b, b, a);
+export async function isBlocked(db, a, b) {
+  return !!(await db.get('SELECT 1 FROM blocks WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)', a, b, b, a));
 }
 
 export function connectionBetween(db, a, b) {
-  return db
-    .prepare(
-      `SELECT * FROM connections
-        WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)
-        ORDER BY id DESC LIMIT 1`,
-    )
-    .get(a, b, b, a);
+  return db.get(
+    `SELECT * FROM connections
+      WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)
+      ORDER BY id DESC LIMIT 1`,
+    a, b, b, a,
+  );
 }
 
-export function areConnected(db, a, b) {
-  return connectionBetween(db, a, b)?.status === 'accepted';
+export async function areConnected(db, a, b) {
+  return (await connectionBetween(db, a, b))?.status === 'accepted';
+}
+
+// Deletes a member and everything that belongs to them. Done explicitly
+// (rather than relying on ON DELETE CASCADE) because hosted SQLite doesn't
+// guarantee foreign-key enforcement inside batches.
+export function deleteUser(db, uid) {
+  return db.batch([
+    ['DELETE FROM event_rsvps WHERE user_id = ? OR event_id IN (SELECT id FROM events WHERE host_id = ?)', [uid, uid]],
+    ['DELETE FROM events WHERE host_id = ?', [uid]],
+    ['DELETE FROM comments WHERE author_id = ? OR post_id IN (SELECT id FROM posts WHERE author_id = ?)', [uid, uid]],
+    ['DELETE FROM posts WHERE author_id = ?', [uid]],
+    ['DELETE FROM messages WHERE sender_id = ? OR recipient_id = ?', [uid, uid]],
+    ['DELETE FROM connections WHERE requester_id = ? OR addressee_id = ?', [uid, uid]],
+    ['DELETE FROM blocks WHERE blocker_id = ? OR blocked_id = ?', [uid, uid]],
+    ['DELETE FROM hub_members WHERE user_id = ?', [uid]],
+    ['DELETE FROM user_interests WHERE user_id = ?', [uid]],
+    ['DELETE FROM email_tokens WHERE user_id = ?', [uid]],
+    ['DELETE FROM sessions WHERE user_id = ?', [uid]],
+    ['DELETE FROM profiles WHERE user_id = ?', [uid]],
+    ['UPDATE reports SET reporter_id = NULL WHERE reporter_id = ?', [uid]],
+    ['UPDATE reports SET resolved_by = NULL WHERE resolved_by = ?', [uid]],
+    ['DELETE FROM users WHERE id = ?', [uid]],
+  ]);
 }

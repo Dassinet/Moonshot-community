@@ -18,7 +18,7 @@ const router = Router();
 
 // The demo has no sign-up or log-in: visitors explore as a sample member.
 const DEMO_REDIRECTS = new Set(['/signup', '/login', '/login/2fa', '/forgot', '/reset', '/verify', '/verify/resend', '/signup/check-email']);
-router.use((req, res, next) => {
+router.use(async (req, res, next) => {
   if (req.app.locals.config.demo && DEMO_REDIRECTS.has(req.path)) return res.redirect(303, '/explore');
   next();
 });
@@ -63,7 +63,7 @@ function signupPage(req, { values = {}, errors = [] } = {}) {
   };
 }
 
-router.get('/signup', (req, res) => {
+router.get('/signup', async (req, res) => {
   if (req.user) return res.redirect(303, '/');
   res.page(signupPage(req));
 });
@@ -94,7 +94,7 @@ router.post('/signup', limit(signupLimiter, (req) => `signup:${req.ip}`), async 
   // time, and respond identically either way — the signup form must not reveal
   // who is a member. The owner of an existing account gets a heads-up email.
   const hash = await hashPassword(password);
-  const existing = db.prepare('SELECT id, display_name FROM users WHERE email = ?').get(values.email);
+  const existing = (await db.get('SELECT id, display_name FROM users WHERE email = ?', values.email));
   const { mailer, emailEnabled } = req.app.locals;
   if (existing && !emailEnabled) {
     // Without email we can't quietly notify the owner, so say it plainly.
@@ -111,22 +111,16 @@ router.post('/signup', limit(signupLimiter, (req) => `signup:${req.ip}`), async 
       });
     } else {
       const now = Date.now();
-      const { lastInsertRowid } = db
-        .prepare('INSERT INTO users (email, password_hash, display_name, coc_accepted_at, created_at) VALUES (?, ?, ?, ?, ?)')
-        .run(values.email, hash, values.display_name, now, now);
+      const { lastInsertRowid } = (await db.run('INSERT INTO users (email, password_hash, display_name, coc_accepted_at, created_at) VALUES (?, ?, ?, ?, ?)', values.email, hash, values.display_name, now, now));
       const userId = Number(lastInsertRowid);
-      db.prepare('INSERT INTO profiles (user_id, member_type, city, country, updated_at) VALUES (?, ?, ?, ?, ?)').run(
-        userId, values.member_type, values.city, values.country, now,
-      );
-      db.prepare(
-        "INSERT OR IGNORE INTO hub_members (hub_id, user_id, joined_at) SELECT id, ?, ? FROM hubs WHERE slug = 'global-online'",
-      ).run(userId, now);
-      audit(db, userId, 'user.signup', `user:${userId}`);
+      (await db.run('INSERT INTO profiles (user_id, member_type, city, country, updated_at) VALUES (?, ?, ?, ?, ?)', userId, values.member_type, values.city, values.country, now));
+      (await db.run("INSERT OR IGNORE INTO hub_members (hub_id, user_id, joined_at) SELECT id, ?, ? FROM hubs WHERE slug = 'global-online'", userId, now));
+      (await audit(db, userId, 'user.signup', `user:${userId}`));
       // Without an email service there's no activation step: sign them straight in.
       if (!emailEnabled) {
-        db.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?').run(now, userId);
+        (await db.run('UPDATE users SET email_verified_at = ? WHERE id = ?', now, userId));
         req.rotateCsrf();
-        startSession(db, config, res, userId);
+        (await startSession(db, config, res, userId));
         res.flash('welcome');
         return res.redirect(303, '/profile/edit');
       }
@@ -144,7 +138,7 @@ router.post('/signup', limit(signupLimiter, (req) => `signup:${req.ip}`), async 
 
 async function sendActivation(req, user) {
   const { db, config, mailer } = req.app.locals;
-  const token = issueToken(db, user.id, 'verify');
+  const token = (await issueToken(db, user.id, 'verify'));
   await mailer.send({ to: user.email, ...activationEmail({ name: user.display_name, url: `${config.appUrl}/verify?token=${token}` }) });
 }
 
@@ -160,7 +154,7 @@ function checkEmailPage(title, message) {
   };
 }
 
-router.get('/signup/check-email', (req, res) => {
+router.get('/signup/check-email', async (req, res) => {
   res.page(checkEmailPage('Check your email', "If that address can be used, we've sent it a link to activate your account. The link expires in 24 hours."));
 });
 
@@ -179,10 +173,10 @@ function badLinkPage(req, what) {
   };
 }
 
-router.get('/verify', (req, res) => {
+router.get('/verify', async (req, res) => {
   const { db } = req.app.locals;
   const token = typeof req.query.token === 'string' ? req.query.token : '';
-  if (!peekToken(db, token, 'verify')) return res.status(400).page(badLinkPage(req, 'activation'));
+  if (!(await peekToken(db, token, 'verify'))) return res.status(400).page(badLinkPage(req, 'activation'));
   res.page({
     title: 'Activate your account',
     body: html`<section class="narrow card center">
@@ -195,17 +189,17 @@ router.get('/verify', (req, res) => {
   });
 });
 
-router.post('/verify', (req, res) => {
+router.post('/verify', async (req, res) => {
   const { db, config } = req.app.locals;
-  const userId = consumeToken(db, req.body.token, 'verify');
+  const userId = (await consumeToken(db, req.body.token, 'verify'));
   if (!userId) return res.status(400).page(badLinkPage(req, 'activation'));
-  const user = db.prepare('SELECT id, status, email_verified_at FROM users WHERE id = ?').get(userId);
+  const user = (await db.get('SELECT id, status, email_verified_at FROM users WHERE id = ?', userId));
   if (!user || user.status !== 'active') return res.redirect(303, '/login');
-  if (!user.email_verified_at) db.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?').run(Date.now(), userId);
-  audit(db, userId, 'user.email_verified', `user:${userId}`);
-  endSession(db, config, req, res);
+  if (!user.email_verified_at) (await db.run('UPDATE users SET email_verified_at = ? WHERE id = ?', Date.now(), userId));
+  (await audit(db, userId, 'user.email_verified', `user:${userId}`));
+  (await endSession(db, config, req, res));
   req.rotateCsrf();
-  startSession(db, config, res, userId);
+  (await startSession(db, config, res, userId));
   res.flash('welcome');
   res.redirect(303, '/profile/edit');
 });
@@ -225,15 +219,15 @@ function emailFormPage(req, { title, intro, action, button }) {
 
 const emailLimiter = new RateLimiter({ windowMs: 60 * 60 * 1000, max: 10 });
 
-router.get('/verify/resend', (req, res) =>
+router.get('/verify/resend', async (req, res) =>
   res.page(emailFormPage(req, { title: 'Resend activation link', intro: "Enter the email you signed up with and we'll send a fresh activation link.", action: '/verify/resend', button: 'Send link' })),
 );
 
 router.post('/verify/resend', limit(emailLimiter, (req) => `email:${req.ip}`), async (req, res) => {
   const { db } = req.app.locals;
   const email = v.email(req.body.email);
-  const user = email && db.prepare("SELECT id, email, display_name FROM users WHERE email = ? AND status = 'active' AND email_verified_at IS NULL").get(email);
-  if (user && canIssue(db, user.id, 'verify')) {
+  const user = email && (await db.get("SELECT id, email, display_name FROM users WHERE email = ? AND status = 'active' AND email_verified_at IS NULL", email));
+  if (user && (await canIssue(db, user.id, 'verify'))) {
     await sendActivation(req, user).catch((err) => console.error('resend email failed:', err.message));
   }
   res.page(checkEmailPage('Check your email', "If there's an account waiting to be activated for that address, we've sent a new link."));
@@ -242,7 +236,7 @@ router.post('/verify/resend', limit(emailLimiter, (req) => `email:${req.ip}`), a
 // --- Password reset ---------------------------------------------------------
 
 // Without email, password resets go through a moderator.
-router.use(['/forgot', '/reset'], (req, res, next) => {
+router.use(['/forgot', '/reset'], async (req, res, next) => {
   if (req.app.locals.emailEnabled) return next();
   res.page({
     title: 'Reset your password',
@@ -252,20 +246,20 @@ router.use(['/forgot', '/reset'], (req, res, next) => {
   });
 });
 
-router.get('/forgot', (req, res) =>
+router.get('/forgot', async (req, res) =>
   res.page(emailFormPage(req, { title: 'Reset your password', intro: "Enter your account email and we'll send you a link to choose a new password.", action: '/forgot', button: 'Send reset link' })),
 );
 
 router.post('/forgot', limit(emailLimiter, (req) => `email:${req.ip}`), async (req, res) => {
   const { db, config, mailer } = req.app.locals;
   const email = v.email(req.body.email);
-  const user = email && db.prepare("SELECT id, email, display_name FROM users WHERE email = ? AND status = 'active'").get(email);
-  if (user && canIssue(db, user.id, 'reset')) {
-    const token = issueToken(db, user.id, 'reset');
+  const user = email && (await db.get("SELECT id, email, display_name FROM users WHERE email = ? AND status = 'active'", email));
+  if (user && (await canIssue(db, user.id, 'reset'))) {
+    const token = (await issueToken(db, user.id, 'reset'));
     await mailer
       .send({ to: user.email, ...resetEmail({ name: user.display_name, url: `${config.appUrl}/reset?token=${token}` }) })
       .catch((err) => console.error('reset email failed:', err.message));
-    audit(db, null, 'auth.reset_requested', `user:${user.id}`);
+    (await audit(db, null, 'auth.reset_requested', `user:${user.id}`));
   }
   res.page(checkEmailPage('Check your email', "If there's an account for that address, we've sent it a link to reset your password. It expires in 1 hour."));
 });
@@ -285,29 +279,27 @@ function resetPage(req, token, errors = []) {
   };
 }
 
-router.get('/reset', (req, res) => {
+router.get('/reset', async (req, res) => {
   const token = typeof req.query.token === 'string' ? req.query.token : '';
-  if (!peekToken(req.app.locals.db, token, 'reset')) return res.status(400).page(badLinkPage(req, 'password reset'));
+  if (!(await peekToken(req.app.locals.db, token, 'reset'))) return res.status(400).page(badLinkPage(req, 'password reset'));
   res.page(resetPage(req, token));
 });
 
 router.post('/reset', limit(emailLimiter, (req) => `reset:${req.ip}`), async (req, res) => {
   const { db, config, mailer } = req.app.locals;
   const token = typeof req.body.token === 'string' ? req.body.token : '';
-  const userId = peekToken(db, token, 'reset');
+  const userId = (await peekToken(db, token, 'reset'));
   if (!userId) return res.status(400).page(badLinkPage(req, 'password reset'));
-  const user = db.prepare('SELECT id, email, display_name FROM users WHERE id = ?').get(userId);
+  const user = (await db.get('SELECT id, email, display_name FROM users WHERE id = ?', userId));
   const problems = passwordProblems(req.body.password, { email: user.email, name: user.display_name });
   if (problems.length) return res.status(400).page(resetPage(req, token, problems));
-  if (consumeToken(db, token, 'reset') !== userId) return res.status(400).page(badLinkPage(req, 'password reset'));
+  if ((await consumeToken(db, token, 'reset')) !== userId) return res.status(400).page(badLinkPage(req, 'password reset'));
 
   const now = Date.now();
   // A working reset link also proves the member owns the address.
-  db.prepare(
-    'UPDATE users SET password_hash = ?, failed_logins = 0, locked_until = 0, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?',
-  ).run(await hashPassword(req.body.password), now, userId);
-  endAllSessions(db, userId);
-  audit(db, userId, 'auth.password_reset', `user:${userId}`);
+  (await db.run('UPDATE users SET password_hash = ?, failed_logins = 0, locked_until = 0, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?', await hashPassword(req.body.password), now, userId));
+  (await endAllSessions(db, userId));
+  (await audit(db, userId, 'auth.password_reset', `user:${userId}`));
   await mailer
     .send({ to: user.email, ...passwordChangedEmail({ name: user.display_name, resetUrl: `${config.appUrl}/forgot` }) })
     .catch((err) => console.error('notice email failed:', err.message));
@@ -333,7 +325,7 @@ function loginPage(req, { email = '', error } = {}) {
   };
 }
 
-router.get('/login', (req, res) => {
+router.get('/login', async (req, res) => {
   if (req.user) return res.redirect(303, '/');
   res.page(loginPage(req));
 });
@@ -343,7 +335,7 @@ router.post('/login', limit(loginLimiter, (req) => `login:${req.ip}`), async (re
   const email = v.email(req.body.email);
   const password = typeof req.body.password === 'string' ? req.body.password.slice(0, 200) : '';
   const generic = 'Email or password is incorrect.';
-  const user = email ? db.prepare('SELECT * FROM users WHERE email = ?').get(email) : null;
+  const user = email ? (await db.get('SELECT * FROM users WHERE email = ?', email)) : null;
 
   if (!user) {
     await burnPasswordCheck(password);
@@ -358,12 +350,10 @@ router.post('/login', limit(loginLimiter, (req) => `login:${req.ip}`), async (re
   }
   if (!(await verifyPassword(password, user.password_hash))) {
     const failed = user.failed_logins + 1;
-    db.prepare('UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?').run(
-      failed >= LOCK_AFTER ? 0 : failed,
+    (await db.run('UPDATE users SET failed_logins = ?, locked_until = ? WHERE id = ?', failed >= LOCK_AFTER ? 0 : failed,
       failed >= LOCK_AFTER ? now + LOCK_MS : 0,
-      user.id,
-    );
-    audit(db, null, failed >= LOCK_AFTER ? 'auth.locked' : 'auth.failed', `user:${user.id}`);
+      user.id));
+    (await audit(db, null, failed >= LOCK_AFTER ? 'auth.locked' : 'auth.failed', `user:${user.id}`));
     return res.status(401).page(loginPage(req, { email, error: generic }));
   }
   if (user.status !== 'active') {
@@ -371,16 +361,16 @@ router.post('/login', limit(loginLimiter, (req) => `login:${req.ip}`), async (re
       loginPage(req, { email, error: 'This account is suspended. Contact the moderation team if you think this is a mistake.' }),
     );
   }
-  db.prepare('UPDATE users SET failed_logins = 0, locked_until = 0 WHERE id = ?').run(user.id);
+  (await db.run('UPDATE users SET failed_logins = 0, locked_until = 0 WHERE id = ?', user.id));
 
   // Email turned off since this account signed up: nothing left to activate.
   if (!user.email_verified_at && !req.app.locals.emailEnabled) {
-    db.prepare('UPDATE users SET email_verified_at = ? WHERE id = ?').run(Date.now(), user.id);
+    (await db.run('UPDATE users SET email_verified_at = ? WHERE id = ?', Date.now(), user.id));
     user.email_verified_at = Date.now();
   }
   // Only revealed after a correct password, so it doesn't leak who has signed up.
   if (!user.email_verified_at) {
-    if (canIssue(db, user.id, 'verify')) {
+    if ((await canIssue(db, user.id, 'verify'))) {
       await sendActivation(req, user).catch((err) => console.error('activation email failed:', err.message));
     }
     return res.status(403).page(checkEmailPage('Activate your account first',
@@ -391,14 +381,14 @@ router.post('/login', limit(loginLimiter, (req) => `login:${req.ip}`), async (re
     setPending2fa(res, config, user.id);
     return res.redirect(303, '/login/2fa');
   }
-  completeLogin(req, res, user.id);
+  (await completeLogin(req, res, user.id));
 });
 
-function completeLogin(req, res, userId) {
+async function completeLogin(req, res, userId) {
   const { db, config } = req.app.locals;
-  audit(db, userId, 'auth.login', `user:${userId}`);
+  (await audit(db, userId, 'auth.login', `user:${userId}`));
   req.rotateCsrf();
-  startSession(db, config, res, userId);
+  (await startSession(db, config, res, userId));
   res.flash('signed-in');
   res.redirect(303, '/');
 }
@@ -447,37 +437,37 @@ function twoFactorPage(req, error) {
   };
 }
 
-router.get('/login/2fa', (req, res) => {
+router.get('/login/2fa', async (req, res) => {
   if (!readPending2fa(req, req.app.locals.config)) return res.redirect(303, '/login');
   res.page(twoFactorPage(req));
 });
 
-router.post('/login/2fa', limit(twoFactorLimiter, (req) => `2fa:${req.ip}`), (req, res) => {
+router.post('/login/2fa', limit(twoFactorLimiter, (req) => `2fa:${req.ip}`), async (req, res) => {
   const { db, config } = req.app.locals;
   const userId = readPending2fa(req, config);
   if (!userId) return res.redirect(303, '/login');
-  const user = db.prepare('SELECT id, status, totp_secret, totp_last_step FROM users WHERE id = ?').get(userId);
+  const user = (await db.get('SELECT id, status, totp_secret, totp_last_step FROM users WHERE id = ?', userId));
   if (!user || user.status !== 'active' || !user.totp_secret) return res.redirect(303, '/login');
 
   const step = verifyCode(user.totp_secret, req.body.code, { lastStep: user.totp_last_step });
   if (step === null) {
-    audit(db, null, 'auth.2fa_failed', `user:${user.id}`);
+    (await audit(db, null, 'auth.2fa_failed', `user:${user.id}`));
     return res.status(401).page(twoFactorPage(req, 'That code is not valid. Check your device clock and try again.'));
   }
-  db.prepare('UPDATE users SET totp_last_step = ? WHERE id = ?').run(step, user.id);
+  (await db.run('UPDATE users SET totp_last_step = ? WHERE id = ?', step, user.id));
   clearCookie(res, pendingName(config), config);
-  completeLogin(req, res, user.id);
+  (await completeLogin(req, res, user.id));
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
   const { db, config } = req.app.locals;
-  endSession(db, config, req, res);
+  (await endSession(db, config, req, res));
   req.rotateCsrf();
   res.flash('signed-out');
   res.redirect(303, '/');
 });
 
-router.get('/code-of-conduct', (req, res) => {
+router.get('/code-of-conduct', async (req, res) => {
   res.page({ title: 'Code of conduct', body: codeOfConduct() });
 });
 

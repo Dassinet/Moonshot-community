@@ -41,7 +41,7 @@ describe('events', () => {
     assert.match(page.body, /You.re going/);
     assert.match((await host.get('/events')).body, /Robotics night/);
     assert.match((await host.get('/hubs/sydney')).body, /Robotics night/);
-    const row = ctx.db.prepare('SELECT starts_at, timezone FROM events WHERE id = ?').get(id);
+    const row = (await ctx.db.get('SELECT starts_at, timezone FROM events WHERE id = ?', id));
     assert.equal(row.starts_at, zonedToUtc(future(), '18:00', 'Australia/Sydney'));
   });
 
@@ -82,18 +82,18 @@ describe('events', () => {
     // Host + Gia = 2 = full.
     await b.get(`/events/${id}`);
     await b.post(`/events/${id}/rsvp`, { status: 'going' });
-    assert.equal(ctx.db.prepare("SELECT COUNT(*) AS n FROM event_rsvps WHERE event_id = ? AND status = 'going'").get(id).n, 2);
+    assert.equal((await ctx.db.get("SELECT COUNT(*) AS n FROM event_rsvps WHERE event_id = ? AND status = 'going'", id)).n, 2);
     await b.post(`/events/${id}/rsvp`, { status: 'interested' });
-    assert.equal(ctx.db.prepare('SELECT status FROM event_rsvps WHERE event_id = ? AND user_id = ?').get(id, userId(ctx.db, 'Guest Gus')).status, 'interested');
+    assert.equal((await ctx.db.get('SELECT status FROM event_rsvps WHERE event_id = ? AND user_id = ?', id, await userId(ctx.db, 'Guest Gus'))).status, 'interested');
 
     // Gia leaves → a spot opens.
     await a.post(`/events/${id}/rsvp`, { status: 'none' });
     await b.post(`/events/${id}/rsvp`, { status: 'going' });
-    assert.equal(ctx.db.prepare('SELECT status FROM event_rsvps WHERE event_id = ? AND user_id = ?').get(id, userId(ctx.db, 'Guest Gus')).status, 'going');
+    assert.equal((await ctx.db.get('SELECT status FROM event_rsvps WHERE event_id = ? AND user_id = ?', id, await userId(ctx.db, 'Guest Gus'))).status, 'going');
 
     // The host can't drop out of their own event.
     await host.post(`/events/${id}/rsvp`, { status: 'none' });
-    assert.ok(ctx.db.prepare('SELECT 1 FROM event_rsvps WHERE event_id = ? AND user_id = ?').get(id, userId(ctx.db, 'Online Olly')));
+    assert.ok((await ctx.db.get('SELECT 1 FROM event_rsvps WHERE event_id = ? AND user_id = ?', id, await userId(ctx.db, 'Online Olly'))));
   });
 
   test('calendar file is valid iCalendar', async () => {

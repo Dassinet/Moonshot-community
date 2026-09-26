@@ -44,9 +44,27 @@ remove `SITE_PASSWORD`, then **Deployments → Redeploy**. Changing the password
 You can delete any `RESEND_API_KEY`, `MAIL_FROM`, `APP_URL`, `SEED_PASSWORD` or `GATE_ALLOWED` variables you added
 earlier; they're no longer needed.
 
-> ⚠️ Vercel keeps no permanent disk, so demo data resets whenever Vercel recycles the server (often within hours),
-> and everyone shares the same sample members. A yellow banner says so. That's fine for showing people the idea;
-> for real members see Option 3.
+### Make the data permanent (Turso)
+
+Vercel has no permanent disk, so on its own the site keeps its data in a temporary file that's wiped whenever
+Vercel restarts it. Connect a free [Turso](https://turso.tech) database (hosted SQLite) to keep everything:
+
+**Easiest — through Vercel:**
+1. Vercel → your project → **Storage** (or **Integrations → Marketplace**) → **Turso** → **Add / Connect**.
+2. Create a database. Pick the location closest to your Vercel functions (by default Vercel runs in the US East
+   region, so choose AWS US East / Virginia).
+3. Connect it to this project. Vercel adds `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` for you.
+4. **Deployments → Redeploy.** On first start the app creates its tables and loads the sample community once.
+
+**Or manually:** create a database at [turso.tech](https://turso.tech), copy its URL (`libsql://…`) and create a
+token, then add them in Vercel as `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` and redeploy.
+
+Once connected, posts, events, profiles and connections persist and every server instance sees the same data, so
+visitors also stop getting randomly signed out. The demo banner drops its "resets regularly" note. Sample events
+that have passed roll forward automatically so the Events page never goes empty.
+
+> Without Turso: data resets whenever Vercel recycles the server, and everyone shares the same sample members.
+> That's fine for a quick look, not for real members.
 
 ## Email (optional)
 
@@ -65,6 +83,5 @@ The app is a normal Node server with a SQLite file, so it runs unchanged on any 
   Start command: `npm start`. These hosts provide HTTPS automatically.
 - Then sign up with your own email and run `npm run make-admin -- you@example.com` from the host's shell.
 
-To keep Vercel for production, the database needs to move to a hosted service (e.g. Turso, which is SQLite-compatible,
-or Neon Postgres). That's a follow-up code change. Before inviting real members, work through the checklist in
-[`SECURITY.md`](SECURITY.md).
+Or stay on Vercel with Turso connected (above) — that's now fully supported. Before inviting real members, turn off
+demo mode and work through the checklist in [`SECURITY.md`](SECURITY.md).

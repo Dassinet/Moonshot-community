@@ -40,7 +40,7 @@ test('opening the activation link does not activate (scanner-safe); confirming d
   const token = linkIn(lastEmail(email), '/verify');
   const page = await c.get(`/verify?token=${token}`);
   assert.equal(page.status, 200);
-  assert.equal(ctx.db.prepare('SELECT email_verified_at FROM users WHERE email = ?').get(email).email_verified_at, null);
+  assert.equal((await ctx.db.get('SELECT email_verified_at FROM users WHERE email = ?', email)).email_verified_at, null);
 
   const ok = await c.post('/verify', { token });
   assert.equal(ok.status, 303);
@@ -68,7 +68,7 @@ test('signing up with an existing email looks identical and notifies the owner',
   assert.equal(dupe.res.status, fresh.res.status);
   assert.equal(dupe.res.location, fresh.res.location);
   assert.match(lastEmail('taken@example.com').subject, /already have/);
-  assert.equal(ctx.db.prepare("SELECT display_name FROM users WHERE email = 'taken@example.com'").get().display_name, 'Original Owen');
+  assert.equal((await ctx.db.get("SELECT display_name FROM users WHERE email = 'taken@example.com'")).display_name, 'Original Owen');
 });
 
 test('emailed links use APP_URL, never the Host header', async () => {
@@ -130,7 +130,7 @@ test('reset tokens expire', async () => {
   await c.get('/forgot');
   await c.post('/forgot', { email: 'expire@example.com' });
   const token = linkIn(lastEmail('expire@example.com'), '/reset');
-  ctx.db.prepare("UPDATE email_tokens SET expires_at = ? WHERE purpose = 'reset'").run(Date.now() - 1);
+  (await ctx.db.run("UPDATE email_tokens SET expires_at = ? WHERE purpose = 'reset'", Date.now() - 1));
   assert.equal((await c.get(`/reset?token=${token}`)).status, 400);
 });
 

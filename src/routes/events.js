@@ -29,7 +29,7 @@ const EVENT_COLS = `e.*, u.display_name AS host_name, h.name AS hub_name, h.slug
   (SELECT status FROM event_rsvps r WHERE r.event_id = e.id AND r.user_id = ?) AS my_status`;
 
 // Upcoming events, optionally narrowed. `where` fragments are fixed strings.
-export function upcomingEvents(db, uid, { hubId = null, mine = false, going = false, limit: max = 50 } = {}) {
+export async function upcomingEvents(db, uid, { hubId = null, mine = false, going = false, limit: max = 50 } = {}) {
   const where = ['e.cancelled = 0', 'e.ends_at > ?', VISIBLE_HOST];
   const params = [uid, Date.now(), uid, uid];
   if (hubId) {
@@ -44,12 +44,8 @@ export function upcomingEvents(db, uid, { hubId = null, mine = false, going = fa
     where.push("EXISTS (SELECT 1 FROM event_rsvps r WHERE r.event_id = e.id AND r.user_id = ? AND r.status = 'going')");
     params.push(uid);
   }
-  return db
-    .prepare(
-      `SELECT ${EVENT_COLS} FROM events e JOIN users u ON u.id = e.host_id JOIN hubs h ON h.id = e.hub_id
-        WHERE ${where.join(' AND ')} ORDER BY e.starts_at LIMIT ${Number(max)}`,
-    )
-    .all(...params);
+  return (await db.all(`SELECT ${EVENT_COLS} FROM events e JOIN users u ON u.id = e.host_id JOIN hubs h ON h.id = e.hub_id
+        WHERE ${where.join(' AND ')} ORDER BY e.starts_at LIMIT ${Number(max)}`, ...params));
 }
 
 export function eventCard(e) {
@@ -72,10 +68,10 @@ export function eventCard(e) {
   </article>`;
 }
 
-router.get('/events', requireAuth, (req, res) => {
+router.get('/events', requireAuth, async (req, res) => {
   const { db } = req.app.locals;
   const show = v.oneOf(req.query.show, ['all', 'mine', 'going'], 'all');
-  const events = upcomingEvents(db, req.user.id, { mine: show === 'mine', going: show === 'going' });
+  const events = (await upcomingEvents(db, req.user.id, { mine: show === 'mine', going: show === 'going' }));
   const tabs = [['all', 'All upcoming'], ['mine', 'My hubs'], ['going', "I'm going"]];
   res.page({
     title: 'Events',
@@ -91,23 +87,19 @@ router.get('/events', requireAuth, (req, res) => {
 
 // --- Create -----------------------------------------------------------------
 
-function myHubs(db, uid) {
-  return db
-    .prepare('SELECT h.id, h.slug, h.name, h.kind FROM hubs h JOIN hub_members m ON m.hub_id = h.id WHERE m.user_id = ? ORDER BY h.kind DESC, h.name')
-    .all(uid);
+async function myHubs(db, uid) {
+  return (await db.all('SELECT h.id, h.slug, h.name, h.kind FROM hubs h JOIN hub_members m ON m.hub_id = h.id WHERE m.user_id = ? ORDER BY h.kind DESC, h.name', uid));
 }
 
-function defaultTimezone(db, uid, hubSlug) {
+async function defaultTimezone(db, uid, hubSlug) {
   if (HUB_TIMEZONES[hubSlug]) return HUB_TIMEZONES[hubSlug];
-  const region = db
-    .prepare("SELECT h.slug FROM hubs h JOIN hub_members m ON m.hub_id = h.id WHERE m.user_id = ? AND h.kind = 'region' AND h.slug != 'global-online' LIMIT 1")
-    .get(uid);
+  const region = (await db.get("SELECT h.slug FROM hubs h JOIN hub_members m ON m.hub_id = h.id WHERE m.user_id = ? AND h.kind = 'region' AND h.slug != 'global-online' LIMIT 1", uid));
   return HUB_TIMEZONES[region?.slug] ?? 'UTC';
 }
 
-function newEventPage(req, { values, errors = [] }) {
+async function newEventPage(req, { values, errors = [] }) {
   const { db } = req.app.locals;
-  const hubs = myHubs(db, req.user.id);
+  const hubs = (await myHubs(db, req.user.id));
   return {
     title: 'Host an event',
     body: html`<section class="card">
@@ -142,15 +134,15 @@ function newEventPage(req, { values, errors = [] }) {
   };
 }
 
-router.get('/events/new', requireAuth, (req, res) => {
+router.get('/events/new', requireAuth, async (req, res) => {
   const { db } = req.app.locals;
   const hub = typeof req.query.hub === 'string' ? req.query.hub.slice(0, 80) : '';
-  const tz = defaultTimezone(db, req.user.id, hub);
+  const tz = (await defaultTimezone(db, req.user.id, hub));
   const nextWeek = utcToZoned(Date.now() + 7 * 24 * HOUR, tz);
-  res.page(newEventPage(req, { values: { hub, timezone: tz, date: nextWeek.date } }));
+  res.page((await newEventPage(req, { values: { hub, timezone: tz, date: nextWeek.date } })));
 });
 
-router.post('/events', requireAuth, limit(createLimiter, (req) => `event:${req.user.id}`), (req, res) => {
+router.post('/events', requireAuth, limit(createLimiter, (req) => `event:${req.user.id}`), async (req, res) => {
   const { db } = req.app.locals;
   const uid = req.user.id;
   const values = {
@@ -166,7 +158,7 @@ router.post('/events', requireAuth, limit(createLimiter, (req) => `event:${req.u
     capacity: req.body.capacity,
   };
   const errors = [];
-  const hub = myHubs(db, uid).find((h) => h.slug === values.hub);
+  const hub = (await myHubs(db, uid)).find((h) => h.slug === values.hub);
   if (!hub) errors.push('Choose one of your hubs.');
   if (values.title.length < 4) errors.push('Please add a title.');
   const onlineUrl = v.url(values.online_url);
@@ -186,28 +178,22 @@ router.post('/events', requireAuth, limit(createLimiter, (req) => `event:${req.u
     if (startsAt > Date.now() + MAX_AHEAD) errors.push('Events can be scheduled up to a year ahead.');
     if (endsAt - startsAt > MAX_LENGTH) errors.push('Events can last at most 3 days.');
   }
-  if (errors.length) return res.status(400).page(newEventPage(req, { values: { ...values, online_url: String(values.online_url ?? '') }, errors }));
+  if (errors.length) return res.status(400).page((await newEventPage(req, { values: { ...values, online_url: String(values.online_url ?? '') }, errors })));
 
   const now = Date.now();
-  const { lastInsertRowid } = db
-    .prepare(
-      `INSERT INTO events (hub_id, host_id, title, description, starts_at, ends_at, timezone, venue, online_url, capacity, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(hub.id, uid, values.title, values.description, startsAt, endsAt, values.timezone, values.venue, onlineUrl ?? '', capacity, now);
+  const { lastInsertRowid } = (await db.run(`INSERT INTO events (hub_id, host_id, title, description, starts_at, ends_at, timezone, venue, online_url, capacity, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, hub.id, uid, values.title, values.description, startsAt, endsAt, values.timezone, values.venue, onlineUrl ?? '', capacity, now));
   const id = Number(lastInsertRowid);
-  db.prepare("INSERT INTO event_rsvps (event_id, user_id, status, created_at) VALUES (?, ?, 'going', ?)").run(id, uid, now);
-  audit(db, uid, 'event.create', `event:${id}`);
+  (await db.run("INSERT INTO event_rsvps (event_id, user_id, status, created_at) VALUES (?, ?, 'going', ?)", id, uid, now));
+  (await audit(db, uid, 'event.create', `event:${id}`));
   res.flash('event-created');
   res.redirect(303, `/events/${id}`);
 });
 
 // --- View / RSVP ------------------------------------------------------------
 
-function loadEvent(db, id, uid) {
-  return db
-    .prepare(`SELECT ${EVENT_COLS} FROM events e JOIN users u ON u.id = e.host_id JOIN hubs h ON h.id = e.hub_id WHERE e.id = ? AND ${VISIBLE_HOST}`)
-    .get(uid, id, uid, uid);
+async function loadEvent(db, id, uid) {
+  return (await db.get(`SELECT ${EVENT_COLS} FROM events e JOIN users u ON u.id = e.host_id JOIN hubs h ON h.id = e.hub_id WHERE e.id = ? AND ${VISIBLE_HOST}`, uid, id, uid, uid));
 }
 
 function googleCalendarUrl(e, pageUrl) {
@@ -221,18 +207,14 @@ function googleCalendarUrl(e, pageUrl) {
   return `https://calendar.google.com/calendar/render?${q}`;
 }
 
-router.get('/events/:id', requireAuth, (req, res, next) => {
+router.get('/events/:id', requireAuth, async (req, res, next) => {
   const { db, config } = req.app.locals;
   const uid = req.user.id;
   const id = v.id(req.params.id);
-  const e = id && loadEvent(db, id, uid);
+  const e = id && (await loadEvent(db, id, uid));
   if (!e) return next();
-  const attendees = db
-    .prepare(
-      `SELECT u.id, u.display_name, r.status FROM event_rsvps r JOIN users u ON u.id = r.user_id
-        WHERE r.event_id = ? AND ${VISIBLE_HOST} ORDER BY r.status, r.created_at`,
-    )
-    .all(id, uid, uid);
+  const attendees = (await db.all(`SELECT u.id, u.display_name, r.status FROM event_rsvps r JOIN users u ON u.id = r.user_id
+        WHERE r.event_id = ? AND ${VISIBLE_HOST} ORDER BY r.status, r.created_at`, id, uid, uid));
   const going = attendees.filter((a) => a.status === 'going');
   const interested = attendees.filter((a) => a.status === 'interested');
   const isHost = e.host_id === uid;
@@ -294,38 +276,36 @@ router.get('/events/:id', requireAuth, (req, res, next) => {
   });
 });
 
-router.post('/events/:id/rsvp', requireAuth, (req, res, next) => {
+router.post('/events/:id/rsvp', requireAuth, async (req, res, next) => {
   const { db } = req.app.locals;
   const uid = req.user.id;
   const id = v.id(req.params.id);
-  const e = id && loadEvent(db, id, uid);
+  const e = id && (await loadEvent(db, id, uid));
   if (!e || e.cancelled || e.ends_at < Date.now()) return next();
   const status = v.oneOf(req.body.status, ['going', 'interested', 'none']);
   if (!status) return res.redirect(303, `/events/${id}`);
   if (e.host_id === uid && status !== 'going') return res.redirect(303, `/events/${id}`); // hosts always attend
 
   if (status === 'none') {
-    db.prepare('DELETE FROM event_rsvps WHERE event_id = ? AND user_id = ?').run(id, uid);
+    (await db.run('DELETE FROM event_rsvps WHERE event_id = ? AND user_id = ?', id, uid));
   } else {
     if (status === 'going' && e.my_status !== 'going' && e.capacity && e.going_count >= e.capacity) {
       res.flash('event-full');
       return res.redirect(303, `/events/${id}`);
     }
-    db.prepare(
-      'INSERT INTO event_rsvps (event_id, user_id, status, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (event_id, user_id) DO UPDATE SET status = excluded.status',
-    ).run(id, uid, status, Date.now());
+    (await db.run('INSERT INTO event_rsvps (event_id, user_id, status, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (event_id, user_id) DO UPDATE SET status = excluded.status', id, uid, status, Date.now()));
   }
   res.flash(status === 'going' ? 'rsvp-going' : 'rsvp-updated');
   res.redirect(303, `/events/${id}`);
 });
 
-router.post('/events/:id/cancel', requireAuth, (req, res, next) => {
+router.post('/events/:id/cancel', requireAuth, async (req, res, next) => {
   const { db } = req.app.locals;
   const id = v.id(req.params.id);
-  const e = id && loadEvent(db, id, req.user.id);
+  const e = id && (await loadEvent(db, id, req.user.id));
   if (!e || (e.host_id !== req.user.id && !isStaff(req))) return next();
-  db.prepare('UPDATE events SET cancelled = 1 WHERE id = ?').run(id);
-  audit(db, req.user.id, 'event.cancel', `event:${id}`);
+  (await db.run('UPDATE events SET cancelled = 1 WHERE id = ?', id));
+  (await audit(db, req.user.id, 'event.cancel', `event:${id}`));
   res.flash('event-cancelled');
   res.redirect(303, `/events/${id}`);
 });
@@ -349,10 +329,10 @@ function fold(line) {
   return out.join('\r\n ');
 }
 
-router.get('/events/:id/calendar.ics', requireAuth, (req, res, next) => {
+router.get('/events/:id/calendar.ics', requireAuth, async (req, res, next) => {
   const { db, config } = req.app.locals;
   const id = v.id(req.params.id);
-  const e = id && loadEvent(db, id, req.user.id);
+  const e = id && (await loadEvent(db, id, req.user.id));
   if (!e || e.cancelled) return next();
   const pageUrl = `${config.appUrl}/events/${e.id}`;
   const canSeeLink = e.my_status === 'going' || e.host_id === req.user.id;

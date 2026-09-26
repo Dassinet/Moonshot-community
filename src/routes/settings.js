@@ -7,7 +7,7 @@ import { RateLimiter, limit } from '../security/rateLimit.js';
 import { hashPassword, verifyPassword, passwordProblems, PASSWORD_MIN } from '../security/passwords.js';
 import { startSession, endAllSessions, endSession } from '../security/sessions.js';
 import { generateSecret, verifyCode, otpauthUri } from '../security/totp.js';
-import { audit } from '../db.js';
+import { audit, deleteUser } from '../db.js';
 import { passwordChangedEmail } from '../views/emails.js';
 
 const router = Router();
@@ -19,14 +19,12 @@ const sensitive = limit(sensitiveLimiter, (req) => `sensitive:${req.user.id}`);
 // HMAC-bound to the user so it can't be swapped for another value.
 const bindSecret = (config, uid, secret) => createHmac('sha256', config.secret).update(`totp-setup:${uid}:${secret}`).digest('base64url');
 
-function settingsPage(req, { errors = [], setupSecret } = {}) {
+async function settingsPage(req, { errors = [], setupSecret } = {}) {
   const { db, config } = req.app.locals;
   const uid = req.user.id;
-  const sessions = db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND expires_at > ?').get(uid, Date.now()).n;
-  const account = db.prepare('SELECT created_at FROM users WHERE id = ?').get(uid);
-  const blocked = db
-    .prepare('SELECT u.id, u.display_name FROM blocks b JOIN users u ON u.id = b.blocked_id WHERE b.blocker_id = ? ORDER BY u.display_name')
-    .all(uid);
+  const sessions = (await db.get('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ? AND expires_at > ?', uid, Date.now())).n;
+  const account = (await db.get('SELECT created_at FROM users WHERE id = ?', uid));
+  const blocked = (await db.all('SELECT u.id, u.display_name FROM blocks b JOIN users u ON u.id = b.blocked_id WHERE b.blocker_id = ? ORDER BY u.display_name', uid));
 
   return {
     title: 'Security & settings',
@@ -96,33 +94,33 @@ function settingsPage(req, { errors = [], setupSecret } = {}) {
 }
 
 const passwordOk = async (db, uid, password) => {
-  const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(uid);
+  const row = (await db.get('SELECT password_hash FROM users WHERE id = ?', uid));
   return typeof password === 'string' && password.length <= 200 && verifyPassword(password, row.password_hash);
 };
 
-router.get('/settings', requireAuth, (req, res) => res.page(settingsPage(req)));
+router.get('/settings', requireAuth, async (req, res) => res.page((await settingsPage(req))));
 
 // Demo members are shared by every visitor, so nobody may change their
 // password or 2FA, or delete them.
-router.use(['/settings/password', '/settings/2fa', '/settings/delete'], (req, res, next) => {
+router.use(['/settings/password', '/settings/2fa', '/settings/delete'], async (req, res, next) => {
   if (!req.app.locals.config.demo) return next();
-  res.status(403).page(settingsPage(req, { errors: ['Account security changes are turned off in the demo.'] }));
+  res.status(403).page((await settingsPage(req, { errors: ['Account security changes are turned off in the demo.'] })));
 });
 
 router.post('/settings/password', requireAuth, sensitive, async (req, res) => {
   const { db, config } = req.app.locals;
   const uid = req.user.id;
   if (!(await passwordOk(db, uid, req.body.current))) {
-    return res.status(400).page(settingsPage(req, { errors: ['Your current password is incorrect.'] }));
+    return res.status(400).page((await settingsPage(req, { errors: ['Your current password is incorrect.'] })));
   }
   const problems = passwordProblems(req.body.password, { email: req.user.email, name: req.user.displayName });
-  if (problems.length) return res.status(400).page(settingsPage(req, { errors: problems }));
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(await hashPassword(req.body.password), uid);
+  if (problems.length) return res.status(400).page((await settingsPage(req, { errors: problems })));
+  (await db.run('UPDATE users SET password_hash = ? WHERE id = ?', await hashPassword(req.body.password), uid));
   // Changing the password signs out every session, then starts a fresh one here.
-  endAllSessions(db, uid);
+  (await endAllSessions(db, uid));
   req.rotateCsrf();
-  startSession(db, config, res, uid);
-  audit(db, uid, 'auth.password_changed', `user:${uid}`);
+  (await startSession(db, config, res, uid));
+  (await audit(db, uid, 'auth.password_changed', `user:${uid}`));
   await req.app.locals.mailer
     .send({ to: req.user.email, ...passwordChangedEmail({ name: req.user.displayName, resetUrl: `${config.appUrl}/forgot` }) })
     .catch((err) => console.error('notice email failed:', err.message));
@@ -130,20 +128,20 @@ router.post('/settings/password', requireAuth, sensitive, async (req, res) => {
   res.redirect(303, '/settings');
 });
 
-router.post('/settings/sessions/revoke', requireAuth, (req, res) => {
+router.post('/settings/sessions/revoke', requireAuth, async (req, res) => {
   const { db } = req.app.locals;
-  db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(req.user.id, req.sessionId);
-  audit(db, req.user.id, 'auth.sessions_revoked', `user:${req.user.id}`);
+  (await db.run('DELETE FROM sessions WHERE user_id = ? AND id != ?', req.user.id, req.sessionId));
+  (await audit(db, req.user.id, 'auth.sessions_revoked', `user:${req.user.id}`));
   res.flash('sessions-revoked');
   res.redirect(303, '/settings');
 });
 
-router.post('/settings/2fa/setup', requireAuth, (req, res) => {
+router.post('/settings/2fa/setup', requireAuth, async (req, res) => {
   if (req.user.has2fa) return res.redirect(303, '/settings');
-  res.page(settingsPage(req, { setupSecret: generateSecret() }));
+  res.page((await settingsPage(req, { setupSecret: generateSecret() })));
 });
 
-router.post('/settings/2fa/enable', requireAuth, sensitive, (req, res) => {
+router.post('/settings/2fa/enable', requireAuth, sensitive, async (req, res) => {
   const { db, config } = req.app.locals;
   const uid = req.user.id;
   const secret = typeof req.body.secret === 'string' ? req.body.secret : '';
@@ -154,10 +152,10 @@ router.post('/settings/2fa/enable', requireAuth, sensitive, (req, res) => {
   }
   const step = verifyCode(secret, req.body.code);
   if (step === null) {
-    return res.status(400).page(settingsPage(req, { setupSecret: secret, errors: ["That code didn't match. Check the key and your device clock."] }));
+    return res.status(400).page((await settingsPage(req, { setupSecret: secret, errors: ["That code didn't match. Check the key and your device clock."] })));
   }
-  db.prepare('UPDATE users SET totp_secret = ?, totp_last_step = ? WHERE id = ?').run(secret, step, uid);
-  audit(db, uid, 'auth.2fa_enabled', `user:${uid}`);
+  (await db.run('UPDATE users SET totp_secret = ?, totp_last_step = ? WHERE id = ?', secret, step, uid));
+  (await audit(db, uid, 'auth.2fa_enabled', `user:${uid}`));
   res.flash('2fa-enabled');
   res.redirect(303, '/settings');
 });
@@ -166,10 +164,10 @@ router.post('/settings/2fa/disable', requireAuth, sensitive, async (req, res) =>
   const { db } = req.app.locals;
   const uid = req.user.id;
   if (!(await passwordOk(db, uid, req.body.password))) {
-    return res.status(400).page(settingsPage(req, { errors: ['Password is incorrect.'] }));
+    return res.status(400).page((await settingsPage(req, { errors: ['Password is incorrect.'] })));
   }
-  db.prepare('UPDATE users SET totp_secret = NULL, totp_last_step = 0 WHERE id = ?').run(uid);
-  audit(db, uid, 'auth.2fa_disabled', `user:${uid}`);
+  (await db.run('UPDATE users SET totp_secret = NULL, totp_last_step = 0 WHERE id = ?', uid));
+  (await audit(db, uid, 'auth.2fa_disabled', `user:${uid}`));
   res.flash('2fa-disabled');
   res.redirect(303, '/settings');
 });
@@ -178,13 +176,13 @@ router.post('/settings/delete', requireAuth, sensitive, async (req, res) => {
   const { db, config } = req.app.locals;
   const uid = req.user.id;
   if (req.body.confirm !== 'yes' || !(await passwordOk(db, uid, req.body.password))) {
-    return res.status(400).page(settingsPage(req, { errors: ['Please confirm with your password and tick the box to delete your account.'] }));
+    return res.status(400).page((await settingsPage(req, { errors: ['Please confirm with your password and tick the box to delete your account.'] })));
   }
-  endSession(db, config, req, res);
-  // ON DELETE CASCADE removes profile, interests, memberships, posts, comments,
-  // connections, messages, blocks and sessions.
-  db.prepare('DELETE FROM users WHERE id = ?').run(uid);
-  audit(db, null, 'user.deleted', `user:${uid}`);
+  (await endSession(db, config, req, res));
+  // Removes the profile, interests, memberships, posts, comments, events,
+  // connections, messages, blocks and sessions in one atomic batch.
+  await deleteUser(db, uid);
+  (await audit(db, null, 'user.deleted', `user:${uid}`));
   req.rotateCsrf();
   res.flash('account-deleted');
   res.redirect(303, '/');

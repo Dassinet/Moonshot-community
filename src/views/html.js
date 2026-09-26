@@ -17,6 +17,8 @@ export const escapeHtml = (v) => String(v).replace(/[&<>"'`]/g, (c) => ESCAPES[c
 
 function render(v) {
   if (v === null || v === undefined || v === false) return '';
+  // Database calls are async; rendering an un-awaited one is always a bug.
+  if (typeof v?.then === 'function') throw new Error('Unawaited promise passed to an html template');
   if (v instanceof SafeHtml) return v.value;
   if (Array.isArray(v)) return v.map(render).join('');
   return escapeHtml(v);

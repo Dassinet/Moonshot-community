@@ -124,8 +124,8 @@ test('messaging requires an accepted connection', async () => {
   const b = new Client(ctx.base);
   await a.signup({ display_name: 'Msg Alice' });
   await b.signup({ display_name: 'Msg Bob' });
-  const bobId = userId(ctx.db, 'Msg Bob');
-  const aliceId = userId(ctx.db, 'Msg Alice');
+  const bobId = await userId(ctx.db, 'Msg Bob');
+  const aliceId = await userId(ctx.db, 'Msg Alice');
 
   assert.equal((await a.post(`/messages/${bobId}`, { body: 'hi' })).status, 404);
 
@@ -133,7 +133,7 @@ test('messaging requires an accepted connection', async () => {
   assert.equal(shortNote.status, 400);
   const req = await a.post(`/members/${bobId}/connect`, { note: 'Hi Bob, I am building in climate and would love to connect.' });
   assert.equal(req.status, 303);
-  const conn = ctx.db.prepare('SELECT id FROM connections WHERE requester_id = ? AND addressee_id = ?').get(aliceId, bobId);
+  const conn = (await ctx.db.get('SELECT id FROM connections WHERE requester_id = ? AND addressee_id = ?', aliceId, bobId));
 
   // Requester cannot accept their own request.
   assert.equal((await a.post(`/connections/${conn.id}/accept`)).status, 404);
@@ -150,12 +150,12 @@ test('blocking hides profiles, severs connections and prevents contact', async (
   const b = new Client(ctx.base);
   await a.signup({ display_name: 'Block Anna' });
   await b.signup({ display_name: 'Block Ben' });
-  const annaId = userId(ctx.db, 'Block Anna');
-  const benId = userId(ctx.db, 'Block Ben');
+  const annaId = await userId(ctx.db, 'Block Anna');
+  const benId = await userId(ctx.db, 'Block Ben');
   await b.post(`/members/${annaId}/connect`, { note: 'Hello Anna, would love to talk about space startups.' });
 
   assert.equal((await a.post(`/members/${benId}/block`)).status, 303);
-  assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM connections WHERE requester_id = ?').get(benId).n, 0);
+  assert.equal((await ctx.db.get('SELECT COUNT(*) AS n FROM connections WHERE requester_id = ?', benId)).n, 0);
   assert.equal((await b.get(`/members/${annaId}`)).status, 404);
   assert.equal((await b.post(`/members/${annaId}/connect`, { note: 'Please accept my request, it is important!!' })).status, 404);
   assert.ok(!(await b.get('/members')).body.includes('Block Anna'));
@@ -168,7 +168,7 @@ test('new accounts are limited in how many connection requests they send', async
   for (let i = 0; i < 4; i++) {
     const t = new Client(ctx.base);
     await t.signup({ display_name: `Target ${i}` });
-    targets.push(userId(ctx.db, `Target ${i}`));
+    targets.push(await userId(ctx.db, `Target ${i}`));
   }
   const note = 'Hi there! I would love to pitch you my amazing opportunity.';
   for (let i = 0; i < 3; i++) assert.equal((await spammer.post(`/members/${targets[i]}/connect`, { note })).status, 303);
@@ -184,7 +184,7 @@ test('members-only profiles hide details from non-connections', async () => {
   await b.signup({ display_name: 'Curious Cal' });
   await a.get('/profile/edit');
   await a.post('/profile/edit', { display_name: 'Private Pat', bio: 'My secret bio text', visibility: 'connections', member_type: 'investor' });
-  const page = await b.get(`/members/${userId(ctx.db, 'Private Pat')}`);
+  const page = await b.get(`/members/${await userId(ctx.db, 'Private Pat')}`);
   assert.equal(page.status, 200);
   assert.ok(!page.body.includes('My secret bio text'));
   assert.ok(!page.body.includes('@example.com'), 'email must never appear on profiles');
@@ -198,34 +198,34 @@ test('moderation is staff-only, and reports can suspend a member', async () => {
 
   const bad = new Client(ctx.base);
   await bad.signup({ display_name: 'Scammer Steve' });
-  const steveId = userId(ctx.db, 'Scammer Steve');
+  const steveId = await userId(ctx.db, 'Scammer Steve');
   assert.equal((await member.post('/report', { type: 'user', id: steveId, reason: 'scam', details: 'Asked for crypto' })).status, 303);
 
   const mod = new Client(ctx.base);
   await mod.signup({ display_name: 'Mod Mia', email: 'mia@example.com' });
-  ctx.db.prepare("UPDATE users SET role = 'moderator' WHERE email = 'mia@example.com'").run();
+  (await ctx.db.run("UPDATE users SET role = 'moderator' WHERE email = 'mia@example.com'"));
   assert.equal((await mod.get('/admin/reports')).status, 200);
-  const report = ctx.db.prepare("SELECT id FROM reports WHERE target_id = ? AND target_type = 'user'").get(steveId);
+  const report = (await ctx.db.get("SELECT id FROM reports WHERE target_id = ? AND target_type = 'user'", steveId));
   assert.equal((await mod.post(`/admin/reports/${report.id}/resolve`, { action: 'suspend', note: 'fraud' })).status, 303);
 
   // Suspension revokes existing sessions immediately.
   assert.equal((await bad.get('/members')).status, 303);
   assert.equal((await member.get(`/members/${steveId}`)).status, 404);
   // Moderators cannot promote themselves.
-  const miaId = userId(ctx.db, 'Mod Mia');
+  const miaId = await userId(ctx.db, 'Mod Mia');
   assert.equal((await mod.post(`/admin/users/${miaId}`, { action: 'role', role: 'admin' })).status, 403);
 });
 
 test('account deletion removes all personal data', async () => {
   const c = new Client(ctx.base);
   await c.signup({ display_name: 'Delete Dana', email: 'dana@example.com' });
-  const id = userId(ctx.db, 'Delete Dana');
+  const id = await userId(ctx.db, 'Delete Dana');
   await c.get('/settings');
   const res = await c.post('/settings/delete', { password: 'correct horse battery staple', confirm: 'yes' });
   assert.equal(res.status, 303);
-  assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM users WHERE id = ?').get(id).n, 0);
-  assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM profiles WHERE user_id = ?').get(id).n, 0);
-  assert.equal(ctx.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?').get(id).n, 0);
+  assert.equal((await ctx.db.get('SELECT COUNT(*) AS n FROM users WHERE id = ?', id)).n, 0);
+  assert.equal((await ctx.db.get('SELECT COUNT(*) AS n FROM profiles WHERE user_id = ?', id)).n, 0);
+  assert.equal((await ctx.db.get('SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?', id)).n, 0);
 });
 
 test('two-factor login flow', async () => {
@@ -239,10 +239,10 @@ test('two-factor login flow', async () => {
 
   // Tampering with the secret is rejected.
   await c.post('/settings/2fa/enable', { secret: generateSecret(), binding, code: codeAt(secret, currentStep()) });
-  assert.equal(ctx.db.prepare("SELECT totp_secret FROM users WHERE email = 'tom@example.com'").get().totp_secret, null);
+  assert.equal((await ctx.db.get("SELECT totp_secret FROM users WHERE email = 'tom@example.com'")).totp_secret, null);
 
   await c.post('/settings/2fa/enable', { secret, binding, code: codeAt(secret, currentStep()) });
-  assert.equal(ctx.db.prepare("SELECT totp_secret FROM users WHERE email = 'tom@example.com'").get().totp_secret, secret);
+  assert.equal((await ctx.db.get("SELECT totp_secret FROM users WHERE email = 'tom@example.com'")).totp_secret, secret);
 
   const fresh = new Client(ctx.base);
   await fresh.get('/login');

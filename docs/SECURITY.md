@@ -41,6 +41,9 @@ and what must be done before a public launch.
 
 ### Data & access control
 - **SQL injection**: every query is a prepared statement with bound parameters; `LIKE` wildcards are escaped.
+- **Database**: local SQLite or hosted Turso over TLS with a scoped auth token (kept in environment variables, never in
+  code). Multi-step changes (profile + interests, block + disconnect, account deletion) run as atomic batches, and
+  account deletion removes every related row explicitly rather than relying on foreign-key cascades.
 - All user input is normalised (control and bidi-override characters stripped), length-capped and validated against
   fixed enums for roles, interests, post types and report reasons.
 - Authorisation checks on every action: only the addressee can accept a request, only connected and unblocked

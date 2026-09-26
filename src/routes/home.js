@@ -8,40 +8,34 @@ import { upcomingEvents, eventCard } from './events.js';
 
 const router = Router();
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   if (!req.user) return res.page({ body: landing({ demo: req.app.locals.config.demo }) });
   const { db } = req.app.locals;
   const uid = req.user.id;
 
-  const profile = db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(uid);
-  const interestCount = db.prepare('SELECT COUNT(*) AS n FROM user_interests WHERE user_id = ?').get(uid).n;
+  const profile = (await db.get('SELECT * FROM profiles WHERE user_id = ?', uid));
+  const interestCount = (await db.get('SELECT COUNT(*) AS n FROM user_interests WHERE user_id = ?', uid)).n;
   const missing = [];
   if (!profile.headline) missing.push('a headline');
   if (!profile.city) missing.push('your city');
   if (!interestCount) missing.push('your interests');
   if (!profile.bio) missing.push('a short bio');
 
-  const incoming = db
-    .prepare("SELECT COUNT(*) AS n FROM connections WHERE addressee_id = ? AND status = 'pending'")
-    .get(uid).n;
-  const suggestions = suggestConnections(db, uid);
-  const myHubs = db
-    .prepare(
-      `SELECT h.slug, h.name, h.kind FROM hubs h JOIN hub_members m ON m.hub_id = h.id
-        WHERE m.user_id = ? ORDER BY h.kind DESC, h.name`,
-    )
-    .all(uid);
-  const feed = db
-    .prepare(
-      `SELECT p.*, u.display_name, h.name AS hub_name, h.slug AS hub_slug,
+  const incoming = (await db.get("SELECT COUNT(*) AS n FROM connections WHERE addressee_id = ? AND status = 'pending'", uid)).n;
+  const suggestions = (await suggestConnections(db, uid));
+  const myHubs = (await db.all(`SELECT h.slug, h.name, h.kind FROM hubs h JOIN hub_members m ON m.hub_id = h.id
+        WHERE m.user_id = ? ORDER BY h.kind DESC, h.name`, uid));
+  const feed = (await db.all(`SELECT p.*, u.display_name, h.name AS hub_name, h.slug AS hub_slug,
               (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.hidden = 0) AS comment_count
          FROM posts p JOIN users u ON u.id = p.author_id JOIN hubs h ON h.id = p.hub_id
         WHERE p.hidden = 0 AND u.status = 'active'
           AND p.hub_id IN (SELECT hub_id FROM hub_members WHERE user_id = ?)
           AND NOT EXISTS (SELECT 1 FROM blocks b WHERE (b.blocker_id = ? AND b.blocked_id = p.author_id) OR (b.blocker_id = p.author_id AND b.blocked_id = ?))
-        ORDER BY p.created_at DESC LIMIT 15`,
-    )
-    .all(uid, uid, uid);
+        ORDER BY p.created_at DESC LIMIT 15`, uid, uid, uid));
+
+  const going = await upcomingEvents(db, uid, { going: true, limit: 2 });
+  const nearby = (await upcomingEvents(db, uid, { mine: true, limit: 6 })).filter((e) => e.my_status !== 'going');
+  const events = [...going, ...nearby].slice(0, 3);
 
   res.page({
     title: 'Home',
@@ -57,15 +51,10 @@ router.get('/', (req, res) => {
           ? html`<div class="card nudge"><strong>${incoming} connection request${incoming > 1 ? 's' : ''}</strong> waiting for you.
               <a class="btn small" href="/connections">Review</a></div>`
           : ''}
-        ${(() => {
-          const going = upcomingEvents(db, uid, { going: true, limit: 2 });
-          const nearby = upcomingEvents(db, uid, { mine: true, limit: 6 }).filter((e) => e.my_status !== 'going');
-          const events = [...going, ...nearby].slice(0, 3);
-          return events.length
-            ? html`<div class="side-head"><h2>Upcoming events</h2><a href="/events">All events →</a></div>
-                <div class="grid cards events">${events.map(eventCard)}</div>`
-            : '';
-        })()}
+        ${events.length
+          ? html`<div class="side-head"><h2>Upcoming events</h2><a href="/events">All events →</a></div>
+              <div class="grid cards events">${events.map(eventCard)}</div>`
+          : ''}
         <h2>From your hubs</h2>
         ${feed.length
           ? feed.map((p) => postSummary(p, { showHub: true }))

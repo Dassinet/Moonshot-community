@@ -110,7 +110,7 @@ describe('demo mode (no log-in)', () => {
   test('picking a member signs you in as them', async () => {
     const c = new Client(ctx.base);
     await c.get('/explore');
-    const res = await c.post(`/explore/${userId(ctx.db, 'Marcus Chen')}`);
+    const res = await c.post(`/explore/${await userId(ctx.db, 'Marcus Chen')}`);
     assert.equal(res.status, 303);
     const home = await c.get('/');
     assert.match(home.body, /Welcome back, Marcus/);
@@ -119,15 +119,15 @@ describe('demo mode (no log-in)', () => {
   test('demo visitors cannot lock others out', async () => {
     const admin = new Client(ctx.base);
     await admin.get('/explore');
-    await admin.post(`/explore/${userId(ctx.db, 'Ada Okafor')}`);
+    await admin.post(`/explore/${await userId(ctx.db, 'Ada Okafor')}`);
     await admin.get('/admin/users');
-    const marcus = userId(ctx.db, 'Marcus Chen');
+    const marcus = await userId(ctx.db, 'Marcus Chen');
     assert.equal((await admin.post(`/admin/users/${marcus}`, { action: 'suspend' })).status, 403);
     assert.equal((await admin.post(`/admin/users/${marcus}`, { action: 'role', role: 'admin' })).status, 403);
     await admin.get('/settings');
     assert.equal((await admin.post('/settings/delete', { password: 'x', confirm: 'yes' })).status, 403);
     assert.equal((await admin.post('/settings/password', { current: 'x', password: 'another long passphrase' })).status, 403);
-    assert.equal(ctx.db.prepare("SELECT COUNT(*) AS n FROM users WHERE status = 'suspended'").get().n, 0);
+    assert.equal((await ctx.db.get("SELECT COUNT(*) AS n FROM users WHERE status = 'suspended'")).n, 0);
   });
 
   test('explore is not available outside demo mode', async () => {

@@ -29,17 +29,13 @@ export function postSummary(p, { showHub = false } = {}) {
   </article>`;
 }
 
-router.get('/hubs', requireAuth, (req, res) => {
+router.get('/hubs', requireAuth, async (req, res) => {
   const { db } = req.app.locals;
   const uid = req.user.id;
-  const me = db.prepare('SELECT city, country FROM profiles WHERE user_id = ?').get(uid);
-  const hubs = db
-    .prepare(
-      `SELECT h.*, (SELECT COUNT(*) FROM hub_members m WHERE m.hub_id = h.id) AS members,
+  const me = (await db.get('SELECT city, country FROM profiles WHERE user_id = ?', uid));
+  const hubs = (await db.all(`SELECT h.*, (SELECT COUNT(*) FROM hub_members m WHERE m.hub_id = h.id) AS members,
               EXISTS (SELECT 1 FROM hub_members m WHERE m.hub_id = h.id AND m.user_id = ?) AS joined
-         FROM hubs h ORDER BY h.name`,
-    )
-    .all(uid);
+         FROM hubs h ORDER BY h.name`, uid));
   const near = (h) =>
     h.kind === 'region' &&
     [me.city, me.country].some((place) => place && place.length > 2 && h.name.toLowerCase().includes(place.toLowerCase()));
@@ -69,27 +65,20 @@ function joinButton(req, h) {
     <button class="btn small ${h.joined ? 'ghost' : ''}">${h.joined ? 'Leave' : 'Join'}</button></form>`;
 }
 
-function loadHub(db, slug, uid) {
-  return db
-    .prepare(
-      `SELECT h.*, (SELECT COUNT(*) FROM hub_members m WHERE m.hub_id = h.id) AS members,
+async function loadHub(db, slug, uid) {
+  return (await db.get(`SELECT h.*, (SELECT COUNT(*) FROM hub_members m WHERE m.hub_id = h.id) AS members,
               EXISTS (SELECT 1 FROM hub_members m WHERE m.hub_id = h.id AND m.user_id = ?) AS joined
-         FROM hubs h WHERE h.slug = ?`,
-    )
-    .get(uid, String(slug).slice(0, 80));
+         FROM hubs h WHERE h.slug = ?`, uid, String(slug).slice(0, 80)));
 }
 
-function hubPage(req, db, hub, { errors = [], values = {} } = {}) {
+async function hubPage(req, db, hub, { errors = [], values = {} } = {}) {
   const uid = req.user.id;
   const kind = v.oneOf(req.query.kind, POST_KIND_KEYS, '');
-  const posts = db
-    .prepare(
-      `SELECT p.*, u.display_name, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.hidden = 0) AS comment_count
+  const posts = (await db.all(`SELECT p.*, u.display_name, (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.hidden = 0) AS comment_count
          FROM posts p JOIN users u ON u.id = p.author_id
         WHERE p.hub_id = ? AND p.hidden = 0 AND (? = '' OR p.kind = ?) AND ${VISIBLE_AUTHOR}
-        ORDER BY p.created_at DESC LIMIT 50`,
-    )
-    .all(hub.id, kind, kind, uid, uid);
+        ORDER BY p.created_at DESC LIMIT 50`, hub.id, kind, kind, uid, uid));
+  const events = await upcomingEvents(db, uid, { hubId: hub.id, limit: 3 });
   return {
     title: hub.name,
     wide: true,
@@ -107,10 +96,7 @@ function hubPage(req, db, hub, { errors = [], values = {} } = {}) {
         </div>
         <aside class="col-side">
           <div class="side-head"><h2>Upcoming events</h2>${hub.joined ? html`<a class="btn small ghost" href="/events/new?hub=${hub.slug}">+ Host</a>` : ''}</div>
-          ${(() => {
-            const events = upcomingEvents(db, uid, { hubId: hub.id, limit: 3 });
-            return events.length ? events.map(eventCard) : html`<div class="card empty small">No events planned yet.</div>`;
-          })()}
+          ${events.length ? events.map(eventCard) : html`<div class="card empty small">No events planned yet.</div>`}
           ${hub.joined
             ? html`<form method="post" action="/hubs/${hub.slug}/posts" class="card stack">
                 <h2>New post</h2>
@@ -130,34 +116,34 @@ function hubPage(req, db, hub, { errors = [], values = {} } = {}) {
   };
 }
 
-router.get('/hubs/:slug', requireAuth, (req, res, next) => {
+router.get('/hubs/:slug', requireAuth, async (req, res, next) => {
   const { db } = req.app.locals;
-  const hub = loadHub(db, req.params.slug, req.user.id);
+  const hub = (await loadHub(db, req.params.slug, req.user.id));
   if (!hub) return next();
-  res.page(hubPage(req, db, hub));
+  res.page((await hubPage(req, db, hub)));
 });
 
-router.post('/hubs/:slug/join', requireAuth, (req, res, next) => {
+router.post('/hubs/:slug/join', requireAuth, async (req, res, next) => {
   const { db } = req.app.locals;
-  const hub = loadHub(db, req.params.slug, req.user.id);
+  const hub = (await loadHub(db, req.params.slug, req.user.id));
   if (!hub) return next();
-  db.prepare('INSERT OR IGNORE INTO hub_members (hub_id, user_id, joined_at) VALUES (?, ?, ?)').run(hub.id, req.user.id, Date.now());
+  (await db.run('INSERT OR IGNORE INTO hub_members (hub_id, user_id, joined_at) VALUES (?, ?, ?)', hub.id, req.user.id, Date.now()));
   res.flash('hub-joined');
   res.redirect(303, `/hubs/${hub.slug}`);
 });
 
-router.post('/hubs/:slug/leave', requireAuth, (req, res, next) => {
+router.post('/hubs/:slug/leave', requireAuth, async (req, res, next) => {
   const { db } = req.app.locals;
-  const hub = loadHub(db, req.params.slug, req.user.id);
+  const hub = (await loadHub(db, req.params.slug, req.user.id));
   if (!hub) return next();
-  db.prepare('DELETE FROM hub_members WHERE hub_id = ? AND user_id = ?').run(hub.id, req.user.id);
+  (await db.run('DELETE FROM hub_members WHERE hub_id = ? AND user_id = ?', hub.id, req.user.id));
   res.flash('hub-left');
   res.redirect(303, `/hubs/${hub.slug}`);
 });
 
-router.post('/hubs/:slug/posts', requireAuth, limit(postLimiter, (req) => `post:${req.user.id}`), (req, res, next) => {
+router.post('/hubs/:slug/posts', requireAuth, limit(postLimiter, (req) => `post:${req.user.id}`), async (req, res, next) => {
   const { db } = req.app.locals;
-  const hub = loadHub(db, req.params.slug, req.user.id);
+  const hub = (await loadHub(db, req.params.slug, req.user.id));
   if (!hub) return next();
   if (!hub.joined) return res.status(403).type('text').send('Join the hub to post.');
   const values = {
@@ -168,37 +154,27 @@ router.post('/hubs/:slug/posts', requireAuth, limit(postLimiter, (req) => `post:
   const errors = [];
   if (values.title.length < 4) errors.push('Please add a title.');
   if (values.body.length < 10) errors.push('Please add some details.');
-  if (errors.length) return res.status(400).page(hubPage(req, db, hub, { errors, values }));
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO posts (hub_id, author_id, kind, title, body, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(hub.id, req.user.id, values.kind, values.title, values.body, Date.now());
+  if (errors.length) return res.status(400).page((await hubPage(req, db, hub, { errors, values })));
+  const { lastInsertRowid } = (await db.run('INSERT INTO posts (hub_id, author_id, kind, title, body, created_at) VALUES (?, ?, ?, ?, ?, ?)', hub.id, req.user.id, values.kind, values.title, values.body, Date.now()));
   res.flash('post-created');
   res.redirect(303, `/posts/${lastInsertRowid}`);
 });
 
-function loadPost(db, id, uid) {
-  return db
-    .prepare(
-      `SELECT p.*, u.display_name, h.name AS hub_name, h.slug AS hub_slug,
+async function loadPost(db, id, uid) {
+  return (await db.get(`SELECT p.*, u.display_name, h.name AS hub_name, h.slug AS hub_slug,
               EXISTS (SELECT 1 FROM hub_members m WHERE m.hub_id = p.hub_id AND m.user_id = ?) AS joined
          FROM posts p JOIN users u ON u.id = p.author_id JOIN hubs h ON h.id = p.hub_id
-        WHERE p.id = ? AND p.hidden = 0 AND ${VISIBLE_AUTHOR}`,
-    )
-    .get(uid, id, uid, uid);
+        WHERE p.id = ? AND p.hidden = 0 AND ${VISIBLE_AUTHOR}`, uid, id, uid, uid));
 }
 
-router.get('/posts/:id', requireAuth, (req, res, next) => {
+router.get('/posts/:id', requireAuth, async (req, res, next) => {
   const { db } = req.app.locals;
   const uid = req.user.id;
   const id = v.id(req.params.id);
-  const post = id && loadPost(db, id, uid);
+  const post = id && (await loadPost(db, id, uid));
   if (!post) return next();
-  const comments = db
-    .prepare(
-      `SELECT c.*, u.display_name FROM comments c JOIN users u ON u.id = c.author_id
-        WHERE c.post_id = ? AND c.hidden = 0 AND ${VISIBLE_AUTHOR} ORDER BY c.created_at`,
-    )
-    .all(id, uid, uid);
+  const comments = (await db.all(`SELECT c.*, u.display_name FROM comments c JOIN users u ON u.id = c.author_id
+        WHERE c.post_id = ? AND c.hidden = 0 AND ${VISIBLE_AUTHOR} ORDER BY c.created_at`, id, uid, uid));
   res.page({
     title: post.title,
     body: html`<p><a href="/hubs/${post.hub_slug}">← ${post.hub_name}</a></p>
@@ -233,28 +209,26 @@ router.get('/posts/:id', requireAuth, (req, res, next) => {
   });
 });
 
-router.post('/posts/:id/comments', requireAuth, limit(commentLimiter, (req) => `comment:${req.user.id}`), (req, res, next) => {
+router.post('/posts/:id/comments', requireAuth, limit(commentLimiter, (req) => `comment:${req.user.id}`), async (req, res, next) => {
   const { db } = req.app.locals;
   const id = v.id(req.params.id);
-  const post = id && loadPost(db, id, req.user.id);
+  const post = id && (await loadPost(db, id, req.user.id));
   if (!post) return next();
   if (!post.joined) return res.status(403).type('text').send('Join the hub to comment.');
   const body = v.text(req.body.body, { max: 2000, multiline: true });
   if (!body) return res.redirect(303, `/posts/${id}`);
-  const { lastInsertRowid } = db
-    .prepare('INSERT INTO comments (post_id, author_id, body, created_at) VALUES (?, ?, ?, ?)')
-    .run(id, req.user.id, body, Date.now());
+  const { lastInsertRowid } = (await db.run('INSERT INTO comments (post_id, author_id, body, created_at) VALUES (?, ?, ?, ?)', id, req.user.id, body, Date.now()));
   res.flash('comment-added');
   res.redirect(303, `/posts/${id}#c${lastInsertRowid}`);
 });
 
-router.post('/posts/:id/delete', requireAuth, (req, res, next) => {
+router.post('/posts/:id/delete', requireAuth, async (req, res, next) => {
   const { db } = req.app.locals;
   const id = v.id(req.params.id);
-  const post = id && db.prepare('SELECT p.id, h.slug FROM posts p JOIN hubs h ON h.id = p.hub_id WHERE p.id = ? AND p.author_id = ?').get(id, req.user.id);
+  const post = id && (await db.get('SELECT p.id, h.slug FROM posts p JOIN hubs h ON h.id = p.hub_id WHERE p.id = ? AND p.author_id = ?', id, req.user.id));
   if (!post) return next();
-  db.prepare('DELETE FROM posts WHERE id = ?').run(id);
-  audit(db, req.user.id, 'post.delete', `post:${id}`);
+  await db.batch([['DELETE FROM comments WHERE post_id = ?', [id]], ['DELETE FROM posts WHERE id = ?', [id]]]);
+  (await audit(db, req.user.id, 'post.delete', `post:${id}`));
   res.flash('post-deleted');
   res.redirect(303, `/hubs/${post.slug}`);
 });

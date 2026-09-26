@@ -9,16 +9,12 @@ import * as v from '../security/validate.js';
 
 const router = Router();
 
-router.use('/explore', (req, res, next) => (req.app.locals.config.demo ? next() : res.status(404).type('text').send('Not found')));
+router.use('/explore', async (req, res, next) => (req.app.locals.config.demo ? next() : res.status(404).type('text').send('Not found')));
 
-router.get('/explore', (req, res) => {
+router.get('/explore', async (req, res) => {
   const { db } = req.app.locals;
-  const members = db
-    .prepare(
-      `SELECT u.id, u.display_name, u.role, u.verified, p.member_type, p.headline, p.city, p.country, p.open_to_intros
-         FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.status = 'active' ORDER BY u.id`,
-    )
-    .all();
+  const members = (await db.all(`SELECT u.id, u.display_name, u.role, u.verified, p.member_type, p.headline, p.city, p.country, p.open_to_intros
+         FROM users u JOIN profiles p ON p.user_id = u.id WHERE u.status = 'active' ORDER BY u.id`));
   const roleNote = (m) => (m.role === 'admin' ? 'Community admin' : m.role === 'moderator' ? 'Moderator' : '');
   res.page({
     title: 'Explore the demo',
@@ -40,14 +36,14 @@ router.get('/explore', (req, res) => {
   });
 });
 
-router.post('/explore/:id', (req, res, next) => {
+router.post('/explore/:id', async (req, res, next) => {
   const { db, config } = req.app.locals;
   const id = v.id(req.params.id);
-  const member = id && db.prepare("SELECT id FROM users WHERE id = ? AND status = 'active'").get(id);
+  const member = id && (await db.get("SELECT id FROM users WHERE id = ? AND status = 'active'", id));
   if (!member) return next();
-  endSession(db, config, req, res);
+  (await endSession(db, config, req, res));
   req.rotateCsrf();
-  startSession(db, config, res, member.id);
+  (await startSession(db, config, res, member.id));
   res.flash('signed-in');
   res.redirect(303, '/');
 });

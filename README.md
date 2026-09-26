@@ -25,7 +25,7 @@ investors, builders, researchers, mentors, operators, corporate partners, policy
 
 ## Quick start
 
-Requires Node.js 22.13+ (uses the built-in `node:sqlite`; the only dependencies are `express` and `helmet`).
+Requires Node.js 22.13+ (uses the built-in `node:sqlite` locally; dependencies are `express`, `helmet` and `@libsql/client` for hosted Turso).
 
 ```bash
 npm install
@@ -33,6 +33,7 @@ npm run seed      # optional: 51 demo members, 45 posts, 15 events, connections 
 npm run dev       # http://127.0.0.1:3000
 npm run dev:phone # same, plus a link to open on a phone on your Wi-Fi
 npm test
+TEST_DB=turso npm test   # same suite through the Turso client
 ```
 
 Demo logins after seeding: `ada@example.com` (admin), `priya@example.com` (moderator), or any
@@ -45,8 +46,9 @@ To make your own account an admin: sign up, then `npm run make-admin -- you@exam
 | Variable | Default | Notes |
 | --- | --- | --- |
 | `NODE_ENV` | — | Set to `production` for secure cookies, HSTS and required secrets |
-| `SESSION_SECRET` | random (dev only) | **Required in production**, ≥32 random characters (`openssl rand -hex 32`) |
+| `SESSION_SECRET` | stored in the database | ≥32 random characters (`openssl rand -hex 32`). If unset, a random secret is generated once and kept in the (persistent) database |
 | `DATABASE_PATH` | `./data/dev.db` | SQLite file (`./data/community.db` in production) |
+| `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` | — | Use a hosted [Turso](https://turso.tech) database instead of the local file. Needed for permanent data on Vercel |
 | `PORT` / `HOST` | `3000` / `127.0.0.1` | |
 | `TRUST_PROXY` | `1` in prod | Number of reverse-proxy hops, so rate limits see real client IPs |
 | `COOKIE_SECURE` | — | `true` to force Secure cookies outside production |
@@ -64,7 +66,7 @@ In production, run behind an HTTPS reverse proxy (e.g. Caddy, nginx, a managed p
 ```
 src/
   app.js            Express app, security headers, middleware wiring
-  db.js             Schema (SQLite) and shared queries
+  db.js             Schema and the async database layer (local SQLite file or hosted Turso)
   matching.js       Connection suggestions
   taxonomy.js       Member types, interests, hubs, report reasons
   brand.js          Brand name, tagline and links (colours: "Brand tokens" in public/styles.css)

@@ -115,7 +115,7 @@ export function layout(req, { title, body, wide = false }) {
   </nav>
 </header>
 ${req.app.locals.config?.demo
-  ? html`<div class="demo-banner" role="note"><strong>Demo site.</strong> Explore as any sample member. Everyone shares the same demo data, and it resets regularly, so don't enter anything real.</div>`
+  ? html`<div class="demo-banner" role="note"><strong>Demo site.</strong> Explore as any sample member. Everyone shares the same demo data${req.app.locals.config.ephemeral ? ', and it resets regularly' : ''}, so don't enter anything real.</div>`
   : ''}
 <main class="${wide ? 'wide' : ''}">
   ${flash ? html`<div class="flash" role="status">${flash}</div>` : ''}

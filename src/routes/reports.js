@@ -12,16 +12,16 @@ const TYPES = ['user', 'post', 'comment', 'message'];
 
 // A member can only report things they can actually see: messages sent to
 // them, and existing posts/comments/users.
-function targetExists(db, type, id, uid) {
+async function targetExists(db, type, id, uid) {
   switch (type) {
     case 'user':
-      return !!db.prepare('SELECT 1 FROM users WHERE id = ? AND id != ?').get(id, uid);
+      return !!(await db.get('SELECT 1 FROM users WHERE id = ? AND id != ?', id, uid));
     case 'post':
-      return !!db.prepare('SELECT 1 FROM posts WHERE id = ?').get(id);
+      return !!(await db.get('SELECT 1 FROM posts WHERE id = ?', id));
     case 'comment':
-      return !!db.prepare('SELECT 1 FROM comments WHERE id = ?').get(id);
+      return !!(await db.get('SELECT 1 FROM comments WHERE id = ?', id));
     case 'message':
-      return !!db.prepare('SELECT 1 FROM messages WHERE id = ? AND recipient_id = ?').get(id, uid);
+      return !!(await db.get('SELECT 1 FROM messages WHERE id = ? AND recipient_id = ?', id, uid));
     default:
       return false;
   }
@@ -48,28 +48,26 @@ function reportPage(req, type, id, errors = []) {
   };
 }
 
-router.get('/report', requireAuth, (req, res, next) => {
+router.get('/report', requireAuth, async (req, res, next) => {
   const type = v.oneOf(req.query.type, TYPES);
   const id = v.id(req.query.id);
-  if (!type || !id || !targetExists(req.app.locals.db, type, id, req.user.id)) return next();
+  if (!type || !id || !(await targetExists(req.app.locals.db, type, id, req.user.id))) return next();
   res.page(reportPage(req, type, id));
 });
 
-router.post('/report', requireAuth, limit(reportLimiter, (req) => `report:${req.user.id}`), (req, res, next) => {
+router.post('/report', requireAuth, limit(reportLimiter, (req) => `report:${req.user.id}`), async (req, res, next) => {
   const { db } = req.app.locals;
   const type = v.oneOf(req.body.type, TYPES);
   const id = v.id(req.body.id);
-  if (!type || !id || !targetExists(db, type, id, req.user.id)) return next();
+  if (!type || !id || !(await targetExists(db, type, id, req.user.id))) return next();
   const reason = v.oneOf(req.body.reason, REPORT_REASON_KEYS);
   if (!reason) return res.status(400).page(reportPage(req, type, id, ['Please choose a reason.']));
-  db.prepare('INSERT INTO reports (reporter_id, target_type, target_id, reason, details, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
-    req.user.id,
+  (await db.run('INSERT INTO reports (reporter_id, target_type, target_id, reason, details, created_at) VALUES (?, ?, ?, ?, ?, ?)', req.user.id,
     type,
     id,
     reason,
     v.text(req.body.details, { max: 2000, multiline: true }),
-    Date.now(),
-  );
+    Date.now()));
   res.flash('reported');
   res.redirect(303, '/');
 });

@@ -57,20 +57,20 @@ function editPage(req, { profile, name, interests, mine, errors = [] }) {
   };
 }
 
-function load(db, uid) {
+async function load(db, uid) {
   return {
-    profile: db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(uid),
-    interests: db.prepare('SELECT * FROM interests ORDER BY name').all(),
-    mine: new Set(db.prepare('SELECT interest_id FROM user_interests WHERE user_id = ?').all(uid).map((r) => r.interest_id)),
+    profile: (await db.get('SELECT * FROM profiles WHERE user_id = ?', uid)),
+    interests: (await db.all('SELECT * FROM interests ORDER BY name')),
+    mine: new Set((await db.all('SELECT interest_id FROM user_interests WHERE user_id = ?', uid)).map((r) => r.interest_id)),
   };
 }
 
-router.get('/profile/edit', requireAuth, (req, res) => {
+router.get('/profile/edit', requireAuth, async (req, res) => {
   const { db } = req.app.locals;
-  res.page(editPage(req, { ...load(db, req.user.id), name: req.user.displayName }));
+  res.page(editPage(req, { ...(await load(db, req.user.id)), name: req.user.displayName }));
 });
 
-router.post('/profile/edit', requireAuth, (req, res) => {
+router.post('/profile/edit', requireAuth, async (req, res) => {
   const { db } = req.app.locals;
   const uid = req.user.id;
   const errors = [];
@@ -79,7 +79,7 @@ router.post('/profile/edit', requireAuth, (req, res) => {
   const website = v.url(req.body.website);
   if (website === null) errors.push('Website must be a valid http(s) link.');
 
-  const allInterests = db.prepare('SELECT id, slug FROM interests').all();
+  const allInterests = (await db.all('SELECT id, slug FROM interests'));
   const chosen = v.manyOf(req.body.interests, allInterests.map((i) => i.slug));
   const profile = {
     member_type: v.oneOf(req.body.member_type, MEMBER_TYPE_KEYS, 'builder'),
@@ -96,30 +96,23 @@ router.post('/profile/edit', requireAuth, (req, res) => {
   };
 
   if (errors.length) {
-    const base = load(db, uid);
+    const base = (await load(db, uid));
     const mine = new Set(allInterests.filter((i) => chosen.includes(i.slug)).map((i) => i.id));
     return res.status(400).page(editPage(req, { ...base, profile: { ...base.profile, ...profile }, mine, name, errors }));
   }
 
-  db.exec('BEGIN');
-  try {
-    db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(name, uid);
-    db.prepare(
+  // One atomic batch: the profile and its interests change together or not at all.
+  await db.batch([
+    ['UPDATE users SET display_name = ? WHERE id = ?', [name, uid]],
+    [
       `UPDATE profiles SET member_type = ?, headline = ?, bio = ?, city = ?, country = ?, seeking = ?, looking_for = ?,
               website = ?, visibility = ?, in_directory = ?, open_to_intros = ?, updated_at = ? WHERE user_id = ?`,
-    ).run(
-      profile.member_type, profile.headline, profile.bio, profile.city, profile.country, profile.seeking,
-      profile.looking_for, profile.website, profile.visibility, profile.in_directory, profile.open_to_intros,
-      Date.now(), uid,
-    );
-    db.prepare('DELETE FROM user_interests WHERE user_id = ?').run(uid);
-    const add = db.prepare('INSERT INTO user_interests (user_id, interest_id) VALUES (?, ?)');
-    for (const i of allInterests) if (chosen.includes(i.slug)) add.run(uid, i.id);
-    db.exec('COMMIT');
-  } catch (err) {
-    db.exec('ROLLBACK');
-    throw err;
-  }
+      [profile.member_type, profile.headline, profile.bio, profile.city, profile.country, profile.seeking,
+        profile.looking_for, profile.website, profile.visibility, profile.in_directory, profile.open_to_intros, Date.now(), uid],
+    ],
+    ['DELETE FROM user_interests WHERE user_id = ?', [uid]],
+    ...allInterests.filter((i) => chosen.includes(i.slug)).map((i) => ['INSERT INTO user_interests (user_id, interest_id) VALUES (?, ?)', [uid, i.id]]),
+  ]);
   res.flash('profile-saved');
   res.redirect(303, `/members/${uid}`);
 });
