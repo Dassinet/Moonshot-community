@@ -44,11 +44,11 @@ router.get('/', async (req, res) => {
       <div class="col-main">
         <h1>Welcome back, ${req.user.displayName.split(' ')[0]}</h1>
         ${missing.length
-          ? html`<div class="card nudge"><strong>Complete your profile</strong> — add ${missing.join(', ')} so we can suggest better connections.
+          ? html`<div class="card nudge"><span><strong>Complete your profile</strong> — add ${missing.join(', ')} so we can suggest better connections.</span>
               <a class="btn small" href="/profile/edit">Edit profile</a></div>`
           : ''}
         ${incoming
-          ? html`<div class="card nudge"><strong>${incoming} connection request${incoming > 1 ? 's' : ''}</strong> waiting for you.
+          ? html`<div class="card nudge"><span><strong>${incoming} connection request${incoming > 1 ? 's' : ''}</strong> waiting for you.</span>
               <a class="btn small" href="/connections">Review</a></div>`
           : ''}
         ${events.length

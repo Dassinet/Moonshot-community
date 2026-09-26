@@ -97,22 +97,25 @@ export function layout(req, { title, body, wide = false }) {
 <body>
 <header class="topbar">
   <a class="brand" href="/" aria-label="${BRAND.name} home"><span>${BRAND.shortName}</span><span class="slash" aria-hidden="true">/</span><span class="sub">Community</span></a>
-  <nav>
+  <nav aria-label="Main">
     ${u
       ? html`<a href="/hubs">Hubs</a><a href="/events">Events</a><a href="/members">Members</a><a href="/connections">Connections</a>
         <a href="/messages">Messages${req.unread ? html` <span class="count">${req.unread}</span>` : ''}</a>
-        ${staff ? html`<a href="/admin">Moderation</a>` : ''}
-        <details class="menu"><summary>${avatar(u.displayName, 'sm')}</summary>
-          <div class="menu-body">
-            <a href="/members/${u.id}">My profile</a><a href="/profile/edit">Edit profile</a><a href="/settings">Security &amp; settings</a>
-            <a href="/code-of-conduct">Code of conduct</a>
-            ${req.app.locals.config?.demo ? html`<a href="/explore">Switch demo member</a>` : ''}
-            <form method="post" action="/logout">${csrfField(req)}<button class="linklike">Sign out</button></form>
-          </div></details>`
+        ${staff ? html`<a href="/admin">Moderation</a>` : ''}`
       : req.app.locals.config?.demo
         ? html`<a href="/code-of-conduct">Code of conduct</a><a class="btn small" href="/explore">Explore the demo</a>`
         : html`<a href="/code-of-conduct">Code of conduct</a><a href="/login">Sign in</a><a class="btn small" href="/signup">Join</a>`}
   </nav>
+  ${u
+    ? html`<details class="menu"><summary aria-label="Account menu">${avatar(u.displayName, 'sm')}</summary>
+        <div class="menu-body">
+          <p class="menu-name">${u.displayName}</p>
+          <a href="/members/${u.id}">My profile</a><a href="/profile/edit">Edit profile</a><a href="/settings">Security &amp; settings</a>
+          <a href="/code-of-conduct">Code of conduct</a>
+          ${req.app.locals.config?.demo ? html`<a href="/explore">Switch demo member</a>` : ''}
+          <form method="post" action="/logout">${csrfField(req)}<button class="linklike">Sign out</button></form>
+        </div></details>`
+    : ''}
 </header>
 ${req.app.locals.config?.demo
   ? html`<div class="demo-banner" role="note"><strong>Demo site.</strong> Explore as any sample member. Everyone shares the same demo data${req.app.locals.config.ephemeral ? ', and it resets regularly' : ''}, so don't enter anything real.</div>`

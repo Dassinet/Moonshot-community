@@ -302,3 +302,31 @@ body.gate main { padding-top: 12vh; }
 }
 .grid.cards.events { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
 @media (max-width: 760px) { .grid.cards.events { grid-template-columns: 1fr; } .topbar nav { gap: 0.7rem; } }
+
+/* ---- Header layout (desktop: one row; phone: logo + avatar, then a swipeable link row) ---- */
+.topbar { flex-wrap: nowrap; }
+.topbar nav { margin-left: auto; }
+.menu-name { margin: 0.25rem 0.65rem 0.4rem; font-weight: 700; color: var(--muted); font-size: 0.85rem; }
+.menu[open] summary .avatar { outline: 2px solid var(--yellow); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .topbar {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "brand menu" "nav nav";
+    align-items: center; row-gap: 0.55rem; column-gap: 0.75rem; padding: 0.7rem max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  }
+  .brand { grid-area: brand; font-size: 1.2rem; min-width: 0; white-space: nowrap; }
+  .menu { grid-area: menu; position: static; }
+  .topbar nav {
+    grid-area: nav; margin: 0 -16px; padding: 0.15rem 16px 0.65rem; gap: 1.15rem;
+    flex-wrap: nowrap; overflow-x: auto; white-space: nowrap; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav > a { font-size: 0.95rem; padding: 0.3rem 0; flex: none; }
+  .topbar nav > a.btn { padding: 0.45rem 0.9rem; }
+  /* Anchor the account menu to the header, full width, always on screen. */
+  .menu-body { top: 100%; left: 12px; right: 12px; min-width: 0; margin-top: 6px; }
+  .menu-body a, .menu-body .linklike { padding: 0.75rem 0.65rem; font-size: 1rem; }
+}
+@media (max-width: 360px) { .brand { font-size: 1.05rem; } }
